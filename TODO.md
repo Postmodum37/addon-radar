@@ -1,3 +1,18 @@
-- Research CurseForge's API. Gather what endpoints are available, what data could be saved and used for displaying addons and calculating trendiness score. I'd prefer save as much data as possible so that in the future we'd had all required data for trendiness algorithm improvement.
-- Research about possible tech stacks. I am not yet set on what to use in the frond-end and back-end. Include data storage. Take into consideration storage solution. I've got experience working with Ruby on Rails and Scala. I am thinking of learning Go, but check also other popular options. Prefer simplicity, velocity of developments and available resources online. 
-- Research about trendiness and hotness algorithms. Search for best practices, suggestions and examples of reputable apps/algorithms online
+# TODO
+
+## Completed Research
+
+- [x] Research CurseForge's API → See `docs/plans/2025-12-08-curseforge-api-design.md`
+- [x] Research tech stack options → See `docs/plans/2025-12-08-tech-stack-design.md`
+- [x] Research trendiness algorithms → See `docs/plans/2025-12-08-trending-algorithm-design.md`
+
+## Next Steps
+
+- [ ] Set up Go project structure (cmd/sync, cmd/web, internal/)
+- [ ] Create database schema (sql/schema.sql)
+- [ ] Implement CurseForge API client
+- [ ] Build sync job (full daily + hourly hot)
+- [ ] Implement trending algorithm
+- [ ] Create web UI with HTMX
+- [ ] Deploy sync job to production
+- [ ] Deploy web server
