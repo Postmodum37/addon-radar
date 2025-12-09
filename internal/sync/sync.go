@@ -82,12 +82,9 @@ func (s *Service) syncCategories(ctx context.Context) error {
 		return fmt.Errorf("fetch categories: %w", err)
 	}
 
+	// Sort categories so parents come before children
+	// First pass: insert all categories without parent references
 	for _, cat := range categories {
-		var parentID pgtype.Int4
-		if cat.ParentID > 0 {
-			parentID = pgtype.Int4{Int32: int32(cat.ParentID), Valid: true}
-		}
-
 		var iconURL pgtype.Text
 		if cat.IconURL != "" {
 			iconURL = pgtype.Text{String: cat.IconURL, Valid: true}
@@ -97,11 +94,32 @@ func (s *Service) syncCategories(ctx context.Context) error {
 			ID:       int32(cat.ID),
 			Name:     cat.Name,
 			Slug:     cat.Slug,
-			ParentID: parentID,
+			ParentID: pgtype.Int4{}, // No parent reference initially
 			IconUrl:  iconURL,
 		})
 		if err != nil {
 			slog.Warn("failed to upsert category", "id", cat.ID, "error", err)
+		}
+	}
+
+	// Second pass: update parent references
+	for _, cat := range categories {
+		if cat.ParentID > 0 {
+			var iconURL pgtype.Text
+			if cat.IconURL != "" {
+				iconURL = pgtype.Text{String: cat.IconURL, Valid: true}
+			}
+
+			err := s.db.UpsertCategory(ctx, database.UpsertCategoryParams{
+				ID:       int32(cat.ID),
+				Name:     cat.Name,
+				Slug:     cat.Slug,
+				ParentID: pgtype.Int4{Int32: int32(cat.ParentID), Valid: true},
+				IconUrl:  iconURL,
+			})
+			if err != nil {
+				slog.Warn("failed to update category parent", "id", cat.ID, "parentId", cat.ParentID, "error", err)
+			}
 		}
 	}
 

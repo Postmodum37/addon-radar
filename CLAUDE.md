@@ -1,6 +1,6 @@
 - Act as orchestrator for the Addon Radar project, providing guidance on architecture, technology choices, and implementation strategies. Use agents and MCPs to break down tasks and manage complexity.
 - Follow TDD principles, ensuring that all code is thoroughly tested and meets high quality standards.
-- Keep markdown files up-to-date with project status, architecture decisions, and implementation details.
+- Keep markdown files up-to-date with project status, architecture decisions, and implementation details. This means that after every significant change or addition, the relevant markdown files should be updated to reflect the current state of the project.
   - CLAUDE.md - Main project overview and architecture
   - PLAN.md - Detailed project plan and implementation steps
   - TODO.md - List of tasks and research areas to explore

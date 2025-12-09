@@ -63,14 +63,27 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 	return body, nil
 }
 
-// SearchMods searches for mods with pagination
-func (c *Client) SearchMods(ctx context.Context, gameID, index, pageSize int) (*SearchModsResponse, error) {
+// SearchModsParams configures the search query
+type SearchModsParams struct {
+	GameID            int
+	GameVersionTypeID int // 0 means no filter
+	SortField         int
+	Index             int
+	PageSize          int
+}
+
+// SearchMods searches for mods with pagination and filters
+func (c *Client) SearchMods(ctx context.Context, params SearchModsParams) (*SearchModsResponse, error) {
 	query := url.Values{}
-	query.Set("gameId", strconv.Itoa(gameID))
-	query.Set("index", strconv.Itoa(index))
-	query.Set("pageSize", strconv.Itoa(pageSize))
-	query.Set("sortField", "2") // 2 = popularity
+	query.Set("gameId", strconv.Itoa(params.GameID))
+	query.Set("index", strconv.Itoa(params.Index))
+	query.Set("pageSize", strconv.Itoa(params.PageSize))
+	query.Set("sortField", strconv.Itoa(params.SortField))
 	query.Set("sortOrder", "desc")
+
+	if params.GameVersionTypeID > 0 {
+		query.Set("gameVersionTypeId", strconv.Itoa(params.GameVersionTypeID))
+	}
 
 	body, err := c.doRequest(ctx, http.MethodGet, "/v1/mods/search", query)
 	if err != nil {
@@ -85,40 +98,100 @@ func (c *Client) SearchMods(ctx context.Context, gameID, index, pageSize int) (*
 	return &result, nil
 }
 
-// GetAllWoWAddons fetches all WoW addons with pagination
-func (c *Client) GetAllWoWAddons(ctx context.Context) ([]Mod, error) {
+// GetAllAddonsForVersion fetches all addons for a specific game version type
+// Uses multiple sort orders to overcome the 10k result limit
+func (c *Client) GetAllAddonsForVersion(ctx context.Context, gameVersionTypeID int) ([]Mod, error) {
+	seen := make(map[int]bool)
 	var allMods []Mod
+
+	// Use multiple sort orders to get different subsets of addons
+	sortOrders := []struct {
+		field int
+		name  string
+	}{
+		{SortFieldPopularity, "popularity"},
+		{SortFieldLastUpdated, "lastUpdated"},
+		{SortFieldTotalDownloads, "totalDownloads"},
+	}
+
+	for _, sort := range sortOrders {
+		slog.Info("fetching addons", "sortBy", sort.name, "gameVersionTypeId", gameVersionTypeID)
+
+		mods, err := c.fetchWithSort(ctx, gameVersionTypeID, sort.field)
+		if err != nil {
+			return nil, fmt.Errorf("fetch by %s: %w", sort.name, err)
+		}
+
+		// Deduplicate
+		newCount := 0
+		for _, mod := range mods {
+			if !seen[mod.ID] {
+				seen[mod.ID] = true
+				allMods = append(allMods, mod)
+				newCount++
+			}
+		}
+
+		slog.Info("fetched addons",
+			"sortBy", sort.name,
+			"fetched", len(mods),
+			"new", newCount,
+			"totalUnique", len(allMods),
+		)
+	}
+
+	return allMods, nil
+}
+
+// fetchWithSort fetches up to 10k addons using a specific sort order
+func (c *Client) fetchWithSort(ctx context.Context, gameVersionTypeID, sortField int) ([]Mod, error) {
+	var mods []Mod
 	pageSize := 50
 	index := 0
 
 	for {
-		slog.Info("fetching addons page", "index", index, "pageSize", pageSize)
+		params := SearchModsParams{
+			GameID:            GameIDWoW,
+			GameVersionTypeID: gameVersionTypeID,
+			SortField:         sortField,
+			Index:             index,
+			PageSize:          pageSize,
+		}
 
-		resp, err := c.SearchMods(ctx, GameIDWoW, index, pageSize)
+		resp, err := c.SearchMods(ctx, params)
 		if err != nil {
 			return nil, fmt.Errorf("fetch page at index %d: %w", index, err)
 		}
 
-		allMods = append(allMods, resp.Data...)
-
-		slog.Info("fetched page",
-			"count", len(resp.Data),
-			"total", len(allMods),
-			"totalAvailable", resp.Pagination.TotalCount,
-		)
+		mods = append(mods, resp.Data...)
 
 		// Check if we've fetched all results
 		if len(resp.Data) < pageSize || index+pageSize >= resp.Pagination.TotalCount {
 			break
 		}
 
+		// CurseForge API has a hard limit of 10,000 results
+		if index+pageSize >= MaxSearchResults {
+			slog.Info("reached API limit",
+				"sortField", sortField,
+				"fetched", len(mods),
+				"totalAvailable", resp.Pagination.TotalCount,
+			)
+			break
+		}
+
 		index += pageSize
 
 		// Small delay to be nice to the API
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	return allMods, nil
+	return mods, nil
+}
+
+// GetAllWoWAddons fetches all WoW Retail addons (convenience method)
+func (c *Client) GetAllWoWAddons(ctx context.Context) ([]Mod, error) {
+	return c.GetAllAddonsForVersion(ctx, GameVersionTypeRetail)
 }
 
 // GetCategories fetches all categories for a game

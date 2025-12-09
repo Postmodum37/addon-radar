@@ -5,6 +5,26 @@ import "time"
 const (
 	BaseURL   = "https://api.curseforge.com"
 	GameIDWoW = 1
+
+	// WoW Game Version Types
+	GameVersionTypeRetail              = 517
+	GameVersionTypeClassic             = 67408
+	GameVersionTypeWrathClassic        = 73713
+	GameVersionTypeCataClassic         = 77522
+	GameVersionTypeMoPClassic          = 79434
+
+	// Sort fields for search
+	SortFieldFeatured    = 1
+	SortFieldPopularity  = 2
+	SortFieldLastUpdated = 3
+	SortFieldName        = 4
+	SortFieldAuthor      = 5
+	SortFieldTotalDownloads = 6
+	SortFieldCategory    = 7
+	SortFieldGameVersion = 8
+
+	// API limit
+	MaxSearchResults = 10000
 )
 
 // SearchModsResponse is the response from /v1/mods/search
