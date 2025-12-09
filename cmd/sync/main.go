@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"addon-radar/internal/config"
+	"addon-radar/internal/sync"
 )
 
 func main() {
@@ -45,5 +46,13 @@ func main() {
 	}
 
 	slog.Info("database connected successfully")
+
+	// Run sync
+	syncService := sync.NewService(pool, cfg.CurseForgeAPIKey)
+	if err := syncService.RunFullSync(ctx); err != nil {
+		slog.Error("sync failed", "error", err)
+		os.Exit(1)
+	}
+
 	slog.Info("sync complete")
 }
