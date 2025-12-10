@@ -32,6 +32,7 @@ func (s *Server) setupRouter() {
 	api := r.Group("/api/v1")
 	{
 		api.GET("/health", s.handleHealth)
+		api.GET("/addons", s.handleListAddons)
 	}
 
 	s.router = r
