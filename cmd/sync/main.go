@@ -29,6 +29,12 @@ func main() {
 
 	slog.Info("config loaded", "env", cfg.Environment)
 
+	// Validate required config for sync
+	if cfg.CurseForgeAPIKey == "" {
+		slog.Error("CURSEFORGE_API_KEY is required for sync")
+		os.Exit(1)
+	}
+
 	// Connect to database
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)

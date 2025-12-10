@@ -6,7 +6,7 @@ import (
 
 type Config struct {
 	DatabaseURL      string `envconfig:"DATABASE_URL" required:"true"`
-	CurseForgeAPIKey string `envconfig:"CURSEFORGE_API_KEY" required:"true"`
+	CurseForgeAPIKey string `envconfig:"CURSEFORGE_API_KEY"` // Optional for web, required for sync
 	Environment      string `envconfig:"ENV" default:"development"`
 }
 
