@@ -175,3 +175,39 @@ func (s *Server) handleGetAddonHistory(c *gin.Context) {
 
 	respondWithData(c, response)
 }
+
+type CategoryResponse struct {
+	ID       int32  `json:"id"`
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
+	ParentID int32  `json:"parent_id,omitempty"`
+	IconURL  string `json:"icon_url,omitempty"`
+}
+
+func (s *Server) handleListCategories(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	categories, err := s.db.ListCategories(ctx)
+	if err != nil {
+		slog.Error("failed to list categories", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	response := make([]CategoryResponse, len(categories))
+	for i, cat := range categories {
+		response[i] = CategoryResponse{
+			ID:   cat.ID,
+			Name: cat.Name,
+			Slug: cat.Slug,
+		}
+		if cat.ParentID.Valid {
+			response[i].ParentID = cat.ParentID.Int32
+		}
+		if cat.IconUrl.Valid {
+			response[i].IconURL = cat.IconUrl.String
+		}
+	}
+
+	respondWithData(c, response)
+}
