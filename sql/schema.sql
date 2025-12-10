@@ -52,3 +52,22 @@ CREATE TABLE categories (
     parent_id INTEGER REFERENCES categories(id),
     icon_url TEXT
 );
+
+-- Trending scores table: cached trending calculations
+CREATE TABLE trending_scores (
+    addon_id INTEGER PRIMARY KEY REFERENCES addons(id) ON DELETE CASCADE,
+    hot_score DECIMAL(20,10) DEFAULT 0,
+    rising_score DECIMAL(20,10) DEFAULT 0,
+    download_velocity DECIMAL(15,5) DEFAULT 0,
+    thumbs_velocity DECIMAL(15,5) DEFAULT 0,
+    download_growth_pct DECIMAL(10,5) DEFAULT 0,
+    thumbs_growth_pct DECIMAL(10,5) DEFAULT 0,
+    size_multiplier DECIMAL(5,4) DEFAULT 1.0,
+    maintenance_multiplier DECIMAL(5,4) DEFAULT 1.0,
+    first_hot_at TIMESTAMPTZ,
+    first_rising_at TIMESTAMPTZ,
+    calculated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_trending_hot ON trending_scores(hot_score DESC) WHERE hot_score > 0;
+CREATE INDEX idx_trending_rising ON trending_scores(rising_score DESC) WHERE rising_score > 0;
