@@ -1,7 +1,16 @@
-[build]
+# Sync service (cron job)
+[services.addon-radar-sync.build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile.sync"
 
-[deploy]
+[services.addon-radar-sync.deploy]
 numReplicas = 1
 restartPolicyType = "never"
+
+# API service (always running)
+[services.addon-radar-api.build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.api"
+
+[services.addon-radar-api.deploy]
+numReplicas = 1
