@@ -8,7 +8,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"addon-radar/internal/config"
+	"addon-radar/internal/database"
 	"addon-radar/internal/sync"
+	"addon-radar/internal/trending"
 )
 
 func main() {
@@ -61,4 +63,12 @@ func main() {
 	}
 
 	slog.Info("sync complete")
+
+	// Run trending calculation
+	slog.Info("starting trending calculation")
+	calculator := trending.NewCalculator(database.New(pool))
+	if err := calculator.CalculateAll(ctx); err != nil {
+		slog.Error("trending calculation failed", "error", err)
+		// Don't exit - sync succeeded, trending is secondary
+	}
 }
