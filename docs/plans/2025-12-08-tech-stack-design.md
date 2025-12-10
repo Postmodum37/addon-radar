@@ -1,67 +1,127 @@
 # Tech Stack Design
 
-> **Status**: Reference document. Backend stack implemented, frontend stack pending.
+> **Status**: Reference document. Updated December 2025.
 >
-> **Implemented** (December 2025):
+> **Implemented**:
 > - Go 1.25, sqlc, pgx/v5, envconfig, slog
 > - PostgreSQL on Railway
-> - Sync job deployed
+> - Sync job deployed (hourly cron)
 >
-> **Pending**:
-> - Gin web server
-> - HTMX + Tailwind frontend
-> - cmd/web binary
+> **Next**:
+> - JSON REST API (cmd/web)
+>
+> **Deferred**:
+> - Frontend (to be decided later: Svelte, React, HTMX, etc.)
 
 ## Overview
 
-This document describes the technology choices for Addon Radar, optimized for learning Go while maintaining development velocity.
+Addon Radar uses an **API-first architecture**. The backend serves JSON endpoints, and the frontend is a separate concern to be implemented later.
 
 ## Goals
 
 - Learn Go through a real project
-- Keep frontend complexity minimal (focus on backend)
-- Ship MVP quickly, polish later
-- Separate concerns: sync job vs. web server
+- Build a clean REST API that any frontend can consume
+- Ship working API quickly, add frontend later
+- Separate concerns: sync job vs. API server vs. frontend
 
 ## Stack Summary
 
 | Layer | Choice | Rationale |
 |-------|--------|-----------|
-| **Language** | Go | Learning goal, excellent for APIs and background jobs |
-| **Web framework** | Gin | Popular, extensive documentation, built-in validation |
-| **Database** | PostgreSQL | Time-series queries, concurrent writes, array columns |
-| **DB library** | sqlc | Type-safe generated code from SQL, idiomatic Go |
-| **Templates** | html/template (stdlib) | Server-rendered HTML, secure by default |
-| **Interactivity** | HTMX | Dynamic updates without JS framework complexity |
-| **CSS** | Tailwind CSS (standalone CLI) | No Node.js required, fast iteration |
+| **Language** | Go 1.25 | Learning goal, excellent for APIs |
+| **Web framework** | Gin | Popular, extensive docs, JSON handling |
+| **Database** | PostgreSQL | Time-series queries, array columns |
+| **DB library** | sqlc + pgx/v5 | Type-safe generated code from SQL |
 | **Config** | envconfig | Simple environment variable parsing |
-| **Logging** | slog (stdlib) | Structured logging, built into Go 1.21+ |
+| **Logging** | slog (stdlib) | Structured logging, built-in |
 | **HTTP client** | net/http (stdlib) | For CurseForge API calls |
+
+### Removed from Original Plan
+
+| Originally Planned | Status |
+|--------------------|--------|
+| html/template | Deferred - API-first |
+| HTMX | Deferred - API-first |
+| Tailwind CSS | Deferred - API-first |
 
 ## Architecture
 
-### Two Binary Approach
+### Three Components
 
-The application consists of two separate binaries sharing a common codebase:
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Sync Job   │────▶│ PostgreSQL  │◀────│  REST API   │
+│ (cmd/sync)  │     │  (Railway)  │     │  (cmd/web)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+     Hourly              Data              Always On
+                                               │
+                                               ▼
+                                        ┌─────────────┐
+                                        │  Frontend   │
+                                        │  (Future)   │
+                                        └─────────────┘
+```
 
-| Binary | Purpose | Schedule |
-|--------|---------|----------|
-| `addon-radar-sync` | Fetches data from CurseForge, writes to DB | Cron (hourly/daily) |
-| `addon-radar-web` | Serves website, reads from DB | Always running |
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| `cmd/sync` | Fetches data from CurseForge, writes to DB | ✅ Deployed |
+| `cmd/web` | JSON REST API, reads from DB | 🔜 Next |
+| Frontend | Web UI consuming the API | Deferred |
 
 **Benefits:**
-- Sync job can run independently without affecting web performance
-- Web server has no background job complexity
-- Can scale each component independently
-- Sync job failures don't crash the website
+- API can be tested/used before frontend exists
+- Frontend technology decision can wait
+- Multiple frontends possible (web, mobile, CLI)
+- Clear separation of concerns
 
-### Local Development Workflow
+## API Design
 
-1. Production sync job populates PostgreSQL
-2. Export script creates database snapshot (pg_dump)
-3. Download snapshot for local development
-4. Develop web UI against real production data
-5. No need to hit CurseForge API during development
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/addons` | List addons (paginated, filterable) |
+| `GET` | `/api/v1/addons/:slug` | Get single addon by slug |
+| `GET` | `/api/v1/addons/:slug/history` | Get download history for charts |
+| `GET` | `/api/v1/trending/hot` | Hot Right Now list |
+| `GET` | `/api/v1/trending/rising` | Rising Stars list |
+| `GET` | `/api/v1/categories` | List all categories |
+| `GET` | `/api/v1/health` | Health check |
+
+### Query Parameters
+
+**`/api/v1/addons`:**
+- `page` - Page number (default: 1)
+- `per_page` - Items per page (default: 20, max: 100)
+- `category` - Filter by category slug
+- `sort` - Sort field: `downloads`, `updated`, `name`, `trending`
+- `order` - Sort order: `asc`, `desc`
+- `search` - Search by name
+
+### Response Format
+
+```json
+{
+  "data": [...],
+  "meta": {
+    "page": 1,
+    "per_page": 20,
+    "total": 12406,
+    "total_pages": 621
+  }
+}
+```
+
+### Error Format
+
+```json
+{
+  "error": {
+    "code": "not_found",
+    "message": "Addon not found"
+  }
+}
+```
 
 ## Project Structure
 
@@ -69,51 +129,38 @@ The application consists of two separate binaries sharing a common codebase:
 addon-radar/
 ├── cmd/
 │   ├── sync/
-│   │   └── main.go           # Sync job entry point
+│   │   └── main.go           # Sync job entry point ✅
 │   └── web/
-│       └── main.go           # Web server entry point
+│       └── main.go           # API server entry point
 ├── internal/
 │   ├── config/
-│   │   └── config.go         # Shared configuration
+│   │   └── config.go         # Shared configuration ✅
 │   ├── database/
-│   │   ├── db.go             # Connection setup
-│   │   ├── queries.sql.go    # sqlc generated
-│   │   └── models.go         # sqlc generated
+│   │   ├── queries.sql.go    # sqlc generated ✅
+│   │   └── models.go         # sqlc generated ✅
 │   ├── curseforge/
-│   │   ├── client.go         # API client
-│   │   └── types.go          # API response types
-│   ├── trending/
-│   │   ├── algorithm.go      # Score calculations
-│   │   ├── hot.go            # Hot Right Now logic
-│   │   └── rising.go         # Rising Stars logic
-│   └── models/
-│       └── addon.go          # Shared domain types
-├── web/
-│   ├── handlers/
-│   │   ├── home.go           # Homepage handler
-│   │   ├── addon.go          # Addon detail handler
-│   │   └── api.go            # HTMX endpoints
-│   ├── templates/
-│   │   ├── layout.html       # Base template
-│   │   ├── home.html         # Homepage
-│   │   ├── addon.html        # Addon detail page
-│   │   └── partials/         # HTMX fragments
-│   └── static/
-│       ├── css/
-│       │   └── styles.css    # Tailwind output
-│       └── images/
+│   │   ├── client.go         # API client ✅
+│   │   └── types.go          # API response types ✅
+│   ├── sync/
+│   │   └── sync.go           # Sync service ✅
+│   ├── api/
+│   │   ├── server.go         # Gin setup, middleware
+│   │   ├── handlers.go       # Route handlers
+│   │   └── response.go       # JSON response helpers
+│   └── trending/
+│       ├── algorithm.go      # Score calculations
+│       ├── hot.go            # Hot Right Now logic
+│       └── rising.go         # Rising Stars logic
 ├── sql/
-│   ├── schema.sql            # Database schema
-│   └── queries.sql           # sqlc query definitions
+│   ├── schema.sql            # Database schema ✅
+│   └── queries.sql           # sqlc query definitions ✅
 ├── scripts/
-│   ├── export-db.sh          # Export production snapshot
-│   └── import-db.sh          # Import snapshot locally
-├── sqlc.yaml                 # sqlc configuration
-├── tailwind.config.js        # Tailwind configuration
-├── input.css                 # Tailwind input
-├── go.mod
-├── go.sum
-└── Makefile                  # Build commands
+│   └── db-setup.sh           # Local Docker setup ✅
+├── sqlc.yaml                 # sqlc configuration ✅
+├── Dockerfile                # Railway deployment ✅
+├── railway.toml              # Railway config ✅
+├── go.mod                    # ✅
+└── go.sum                    # ✅
 ```
 
 ## Key Libraries
@@ -125,90 +172,45 @@ import "github.com/gin-gonic/gin"
 
 func main() {
     r := gin.Default()
-    r.GET("/", handlers.Home)
-    r.GET("/addon/:slug", handlers.AddonDetail)
+
+    // API routes
+    api := r.Group("/api/v1")
+    {
+        api.GET("/health", handlers.Health)
+        api.GET("/addons", handlers.ListAddons)
+        api.GET("/addons/:slug", handlers.GetAddon)
+        api.GET("/trending/hot", handlers.HotAddons)
+        api.GET("/trending/rising", handlers.RisingAddons)
+        api.GET("/categories", handlers.ListCategories)
+    }
+
     r.Run(":8080")
 }
 ```
 
-**Why Gin over Chi:**
-- More tutorials and Stack Overflow answers available
-- Built-in JSON binding and validation
-- Larger community for troubleshooting
-- Good choice when learning Go
-
 ### sqlc (Database)
-
-Write SQL, generate type-safe Go:
 
 ```sql
 -- sql/queries.sql
 
--- name: GetAddonByID :one
-SELECT * FROM addons WHERE id = $1;
-
--- name: GetHotAddons :many
+-- name: ListAddons :many
 SELECT * FROM addons
-WHERE total_downloads >= 500
-ORDER BY hot_score DESC
-LIMIT $1;
+WHERE status = 'active'
+ORDER BY download_count DESC
+LIMIT $1 OFFSET $2;
 
--- name: CreateSnapshot :exec
-INSERT INTO snapshots (addon_id, recorded_at, download_count, thumbs_up_count)
-VALUES ($1, $2, $3, $4);
+-- name: GetAddonBySlug :one
+SELECT * FROM addons WHERE slug = $1;
+
+-- name: GetAddonHistory :many
+SELECT recorded_at, download_count, thumbs_up_count
+FROM snapshots
+WHERE addon_id = $1
+ORDER BY recorded_at DESC
+LIMIT $2;
 ```
 
-Generates:
-```go
-func (q *Queries) GetAddonByID(ctx context.Context, id int32) (Addon, error)
-func (q *Queries) GetHotAddons(ctx context.Context, limit int32) ([]Addon, error)
-func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) error
-```
-
-**Why sqlc over GORM:**
-- Learn SQL, not ORM abstractions
-- Type-safe without reflection magic
-- Better performance (no runtime query building)
-- Very Go-idiomatic approach
-
-### HTMX (Interactivity)
-
-```html
-<!-- Filter addons without page reload -->
-<select hx-get="/partials/addons"
-        hx-target="#addon-list"
-        hx-trigger="change"
-        name="category">
-    <option value="">All Categories</option>
-    <option value="ui">User Interface</option>
-</select>
-
-<div id="addon-list">
-    <!-- Server returns HTML fragment, swapped in here -->
-</div>
-```
-
-**Why HTMX:**
-- No JavaScript framework to learn
-- Server-rendered HTML (good for SEO)
-- Perfect for filtering, pagination, sorting
-- Keeps focus on Go backend
-
-### Tailwind CSS (Standalone)
-
-No Node.js required:
-
-```bash
-# Download standalone binary
-curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64
-chmod +x tailwindcss-macos-arm64
-mv tailwindcss-macos-arm64 tailwindcss
-
-# Watch and compile
-./tailwindcss -i input.css -o web/static/css/styles.css --watch
-```
-
-## Database Setup
+## Database
 
 ### Local Development (Docker)
 
@@ -220,94 +222,79 @@ docker run -d --name addon-radar-db \
   postgres:16
 ```
 
-### Production Options
+### Production
 
-| Service | Free Tier | Notes |
-|---------|-----------|-------|
-| **Neon** | 0.5 GB | Serverless, branching for dev |
-| **Supabase** | 500 MB | Good dashboard, auth if needed later |
-| **Railway** | $5/month credit | Simple deployment |
-
-## Build & Run
-
-### Makefile
-
-```makefile
-.PHONY: build run-web run-sync db-up db-down sqlc tailwind
-
-# Build both binaries
-build:
-	go build -o bin/sync ./cmd/sync
-	go build -o bin/web ./cmd/web
-
-# Run web server
-run-web:
-	go run ./cmd/web
-
-# Run sync job once
-run-sync:
-	go run ./cmd/sync
-
-# Database
-db-up:
-	docker start addon-radar-db || docker run -d --name addon-radar-db \
-		-e POSTGRES_PASSWORD=dev \
-		-e POSTGRES_DB=addon_radar \
-		-p 5432:5432 postgres:16
-
-db-down:
-	docker stop addon-radar-db
-
-# Generate sqlc code
-sqlc:
-	sqlc generate
-
-# Watch Tailwind
-tailwind:
-	./tailwindcss -i input.css -o web/static/css/styles.css --watch
-```
+PostgreSQL on Railway (already deployed with sync job).
 
 ## Environment Variables
 
 ```bash
-# .env (local development)
-DATABASE_URL=postgres://postgres:dev@localhost:5432/addon_radar?sslmode=disable
-CURSEFORGE_API_KEY=your-api-key
-PORT=8080
-ENV=development
+# Required
+DATABASE_URL=postgres://...
+CURSEFORGE_API_KEY=...  # Only needed for sync job
 
-# Production adds:
-# DATABASE_URL=postgres://user:pass@host:5432/addon_radar?sslmode=require
-# ENV=production
+# Optional
+PORT=8080               # API server port
+ENV=development         # development/production
+```
+
+## CORS Configuration
+
+Since frontend will be separate, API needs CORS headers:
+
+```go
+func CORSMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Header("Access-Control-Allow-Origin", "*")
+        c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+
+        c.Next()
+    }
+}
 ```
 
 ## Future Considerations
 
-### Potential Svelte Migration
+### Frontend Options (Deferred)
 
-If richer UI is needed later:
-1. Keep Go API (Gin serves JSON)
-2. Add SvelteKit frontend
-3. Deploy as two services
-4. Gradual migration possible
+When ready to build frontend:
 
-### Scaling
+| Option | Pros | Cons |
+|--------|------|------|
+| **SvelteKit** | Fast, modern, good DX | New framework to learn |
+| **React/Next.js** | Huge ecosystem | Heavy, complex |
+| **HTMX + templates** | Simple, Go-native | Less interactive |
+| **Static HTML + JS** | Simplest | Limited functionality |
 
-Current stack handles the projected load easily:
-- ~7,000 addons, ~5M snapshots/year
-- Single PostgreSQL instance sufficient
-- Can add read replicas if needed
-- Horizontal scaling via multiple web instances
+### Rate Limiting (Future)
+
+If needed later:
+```go
+// Optional rate limiting middleware
+api.Use(ratelimit.New(100, time.Minute))
+```
+
+### Caching (Future)
+
+Trending scores change hourly, so caching is viable:
+- Redis for API response caching
+- In-memory cache for trending lists
+- CDN for static assets (when frontend exists)
 
 ## Summary
 
 | Decision | Choice |
 |----------|--------|
-| Language | Go (learning goal) |
-| Framework | Gin (docs + community) |
-| Database | PostgreSQL (time-series, concurrent writes) |
-| DB access | sqlc (type-safe, idiomatic) |
-| Frontend | Server-rendered HTML + HTMX |
-| CSS | Tailwind standalone |
-| Architecture | Two binaries (sync + web) |
-| Local dev | Download production snapshots |
+| Architecture | API-first (JSON REST) |
+| Language | Go 1.25 |
+| Framework | Gin |
+| Database | PostgreSQL + sqlc |
+| Auth | None (public API) |
+| Frontend | Deferred |
+| Deployment | Railway |
