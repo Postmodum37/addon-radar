@@ -144,3 +144,77 @@ func TestCalculateWeightedSignal(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateHotScore(t *testing.T) {
+	tests := []struct {
+		name                  string
+		weightedVelocity      float64
+		sizeMultiplier        float64
+		maintenanceMultiplier float64
+		ageHours              float64
+		want                  float64
+	}{
+		{
+			name:                  "new addon",
+			weightedVelocity:      100.0,
+			sizeMultiplier:        0.5,
+			maintenanceMultiplier: 1.1,
+			ageHours:              0,
+			want:                  19.45, // (100 * 0.5 * 1.1) / (0+2)^1.5
+		},
+		{
+			name:                  "24h old addon",
+			weightedVelocity:      100.0,
+			sizeMultiplier:        0.5,
+			maintenanceMultiplier: 1.1,
+			ageHours:              24,
+			want:                  0.41, // (100 * 0.5 * 1.1) / (24+2)^1.5
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateHotScore(tt.weightedVelocity, tt.sizeMultiplier, tt.maintenanceMultiplier, tt.ageHours)
+			if math.Abs(got-tt.want) > 0.1 {
+				t.Errorf("CalculateHotScore() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRisingScore(t *testing.T) {
+	tests := []struct {
+		name                  string
+		weightedGrowthPct     float64
+		sizeMultiplier        float64
+		maintenanceMultiplier float64
+		ageHours              float64
+		want                  float64
+	}{
+		{
+			name:                  "new addon",
+			weightedGrowthPct:     50.0,
+			sizeMultiplier:        0.3,
+			maintenanceMultiplier: 1.0,
+			ageHours:              0,
+			want:                  4.31, // (50 * 0.3 * 1.0) / (0+2)^1.8 = 15 / 3.482 = 4.308
+		},
+		{
+			name:                  "48h old addon",
+			weightedGrowthPct:     50.0,
+			sizeMultiplier:        0.3,
+			maintenanceMultiplier: 1.0,
+			ageHours:              48,
+			want:                  0.016, // (50 * 0.3 * 1.0) / (48+2)^1.8
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateRisingScore(tt.weightedGrowthPct, tt.sizeMultiplier, tt.maintenanceMultiplier, tt.ageHours)
+			if math.Abs(got-tt.want) > 0.1 {
+				t.Errorf("CalculateRisingScore() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -7,6 +7,10 @@ const (
 	ThumbsWeight   = 0.2
 	UpdateWeight   = 0.1
 	UpdateBoost    = 10.0 // Boost value when addon has recent update
+
+	HotGravity    = 1.5
+	RisingGravity = 1.8
+	AgeOffset     = 2.0 // Prevents division by zero and smooths early decay
 )
 
 // CalculateSizeMultiplier returns a value between 0.1 and 1.0
@@ -66,6 +70,22 @@ func CalculateWeightedSignal(downloadSignal, thumbsSignal float64, hasRecentUpda
 		updateBoost = UpdateBoost
 	}
 	return (DownloadWeight * downloadSignal) + (ThumbsWeight * thumbsSignal) + (UpdateWeight * updateBoost)
+}
+
+// CalculateHotScore computes the "Hot Right Now" score.
+// Formula: (weighted_velocity * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.5
+func CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
+	numerator := weightedVelocity * sizeMultiplier * maintenanceMultiplier
+	denominator := math.Pow(ageHours+AgeOffset, HotGravity)
+	return numerator / denominator
+}
+
+// CalculateRisingScore computes the "Rising Stars" score.
+// Formula: (weighted_growth_pct * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.8
+func CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
+	numerator := weightedGrowthPct * sizeMultiplier * maintenanceMultiplier
+	denominator := math.Pow(ageHours+AgeOffset, RisingGravity)
+	return numerator / denominator
 }
 
 func clamp(v, min, max float64) float64 {
