@@ -1,5 +1,10 @@
 # Trending Algorithm Design
 
+> **Status: 🔜 TO IMPLEMENT**
+>
+> This is the main differentiator for Addon Radar. Data is now accumulating via hourly syncs.
+> Implementation is the next major milestone after building the basic web UI.
+
 ## Overview
 
 This document describes Addon Radar's trending algorithm for surfacing popular and rising WoW addons. The algorithm uses multiple signals, adaptive time windows, and category-specific decay rates to provide meaningful trending lists.

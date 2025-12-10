@@ -1,5 +1,13 @@
 # CurseForge API Integration Design
 
+> **Status**: Reference document. Core design implemented with enhancements noted below.
+>
+> **Implementation Notes** (December 2025):
+> - Uses multi-query strategy (3 sort orders) instead of single query to overcome 10k API limit
+> - Achieves 99.8% catalog coverage (12,406 of ~12,427 Retail addons)
+> - Currently syncing Retail only (gameVersionTypeId=517)
+> - Hot-only sync not yet implemented (full sync runs hourly)
+
 ## Overview
 
 This document describes how Addon Radar syncs and stores data from the CurseForge API to support trending algorithm development.

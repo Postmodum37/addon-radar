@@ -1,5 +1,17 @@
 # Tech Stack Design
 
+> **Status**: Reference document. Backend stack implemented, frontend stack pending.
+>
+> **Implemented** (December 2025):
+> - Go 1.25, sqlc, pgx/v5, envconfig, slog
+> - PostgreSQL on Railway
+> - Sync job deployed
+>
+> **Pending**:
+> - Gin web server
+> - HTMX + Tailwind frontend
+> - cmd/web binary
+
 ## Overview
 
 This document describes the technology choices for Addon Radar, optimized for learning Go while maintaining development velocity.

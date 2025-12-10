@@ -1,40 +1,117 @@
-## General idea
+# Addon Radar - Project Plan
 
-I want to create a website that displays trending World of Warcraft addons for **Retail** version. Data should be synced and saved hourly from the CurseForge API. Historical download snapshots are stored to calculate velocity-based trending scores
+## Vision
 
-## Main focus
+A website that helps World of Warcraft players discover trending and rising addons for **Retail** version. The main focus is a unique trendiness algorithm that surfaces both established hot addons and lesser-known rising stars.
 
-Main focus of this app should be to create an unique and comprehensive trendiness algorithm for showing up addons.
+## Current Status: Data Collection Phase ✅
 
-## Trending Algorithm
+**Deployed**: Sync job running hourly on Railway, collecting data from CurseForge API.
 
-This is my MVP idea of trending algorithm which I'd like to improve. This is the main goal of this project so a special attention and research should be given when coming up with a proper solution. 
+- 12,406 Retail addons synced
+- Hourly snapshots accumulating (downloads, thumbs up, popularity rank, rating)
+- Categories synced with parent relationships
+- Multi-query strategy achieving 99.8% catalog coverage
 
-**Hot Right Now** - Top addons by absolute download velocity
-- Requires 500+ total downloads
-- Sorted by downloads gained in the last 24 hours
-- Shows established addons with high activity
+## Architecture
 
-**Rising Stars** - Top addons by percentage growth
-- Requires 50-5,000 total downloads
-- Sorted by growth percentage (7-day preferred, 24-hour fallback)
-- Shows smaller addons gaining traction
+### Deployed Components
+- **Sync Job** (`cmd/sync`) - Runs hourly via Railway cron
+- **PostgreSQL** - Hosted on Railway
 
-**Tier Multipliers** - To prevent tiny addons from dominating:
-- 0-10 downloads: 0.1x
-- 11-50: 0.3x
-- 51-100: 0.5x
-- 101-500: 0.7x
-- 501-1000: 0.85x
-- 1001+: 1.0x
+### Planned Components
+- **Web Server** (`cmd/web`) - Gin + HTMX + Tailwind
+- **Trending Service** - Score calculation and caching
 
-## Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string
-- `CURSEFORGE_API_KEY` - CurseForge API key
-- `PORT` - Server port (default: 8080)
+## Trending Algorithm Design
 
-## Resources:
-- [CurseForge Addons]https://www.curseforge.com/wow
+### Two Categories
+
+**Hot Right Now** - Established addons with high download velocity
+- Minimum 500 total downloads
+- Moderate decay (gravity 1.5) for stable list presence
+- Signal: 70% downloads + 20% thumbs up + 10% update activity
+
+**Rising Stars** - Smaller addons gaining traction
+- 50-10,000 total downloads
+- Aggressive decay (gravity 1.8) for quick cycling
+- Same signal blend as Hot Right Now
+
+### Key Features
+- **Adaptive time windows**: Use 24h data when confident (5+ snapshots, 10+ change), otherwise blend with 7d
+- **Logarithmic size multiplier**: Smooth curve instead of arbitrary tiers
+- **Maintenance reward**: 0.95x-1.15x based on update frequency
+- **Age reset on re-entry**: Fair chance for returning addons
+
+See `docs/plans/2025-12-08-trending-algorithm-design.md` for full details.
+
+## Implementation Roadmap
+
+### Phase 1: Data Collection ✅
+- [x] CurseForge API client with multi-query strategy
+- [x] Database schema (addons, snapshots, categories)
+- [x] Full sync job deployed to Railway
+- [x] Hourly cron schedule configured
+
+### Phase 2: Web UI (Next)
+- [ ] Gin server with HTML templates
+- [ ] Homepage showing trending lists
+- [ ] HTMX for filtering/sorting
+- [ ] Tailwind CSS styling
+- [ ] Deploy to Railway
+
+### Phase 3: Trending Algorithm
+- [ ] Implement score calculations
+- [ ] Add trending columns to database
+- [ ] Schedule hourly recalculation
+- [ ] Integrate with web UI
+
+### Phase 4: Optimization
+- [ ] Hot addon detection
+- [ ] Hourly hot-only sync (faster)
+- [ ] Daily full sync
+- [ ] Performance tuning
+
+### Phase 5: Polish
+- [ ] Addon detail pages
+- [ ] Search functionality
+- [ ] Category filtering
+- [ ] SEO optimization
+- [ ] Historical charts
+
+## Tech Stack
+
+| Component | Choice | Status |
+|-----------|--------|--------|
+| Language | Go 1.25 | ✅ |
+| Web Framework | Gin | Planned |
+| Database | PostgreSQL | ✅ |
+| DB Library | sqlc + pgx/v5 | ✅ |
+| Frontend | HTMX + Tailwind | Planned |
+| Hosting | Railway | ✅ (sync), Planned (web) |
+
+## Data Model
+
+### addons
+Core addon metadata from CurseForge, updated each sync.
+
+### snapshots
+Time-series metrics for trending calculations. Growing hourly.
+
+### categories
+Reference data with parent relationships for filtering.
+
+## API Coverage
+
+Using multi-query strategy with 3 sort orders:
+1. Popularity (most popular addons)
+2. Last Updated (recently active addons)
+3. Total Downloads (high download count addons)
+
+This achieves 99.8% catalog coverage (12,406 of ~12,427 addons) despite CurseForge's 10k result limit per query.
+
+## Resources
+
+- [CurseForge Addons](https://www.curseforge.com/wow)
 - [CurseForge API Docs](https://docs.curseforge.com/rest-api/)
-
-
+- Design docs in `docs/plans/`
