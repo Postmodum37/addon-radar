@@ -37,6 +37,20 @@ func CalculateMaintenanceMultiplier(updatesIn90Days int) float64 {
 	}
 }
 
+// CalculateVelocity uses confidence-based adaptive windows.
+// Returns (isConfident24h, blendedVelocity).
+func CalculateVelocity(velocity24h, velocity7d float64, dataPoints24h int, change24h int64) (bool, float64) {
+	// Confident if we have enough data points AND meaningful change
+	confident := dataPoints24h >= 5 && change24h >= 10
+
+	if confident {
+		// Weight toward fresh data
+		return true, (0.8 * velocity24h) + (0.2 * velocity7d)
+	}
+	// Fall back to longer window
+	return false, (0.3 * velocity24h) + (0.7 * velocity7d)
+}
+
 func clamp(v, min, max float64) float64 {
 	if v < min {
 		return min

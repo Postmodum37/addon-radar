@@ -51,3 +51,55 @@ func TestCalculateMaintenanceMultiplier(t *testing.T) {
 		}
 	}
 }
+
+func TestCalculateVelocity(t *testing.T) {
+	tests := []struct {
+		name           string
+		velocity24h    float64
+		velocity7d     float64
+		dataPoints24h  int
+		change24h      int64
+		wantConfident  bool
+		wantVelocity   float64
+	}{
+		{
+			name:          "confident 24h - enough data and change",
+			velocity24h:   100.0,
+			velocity7d:    50.0,
+			dataPoints24h: 10,
+			change24h:     500,
+			wantConfident: true,
+			wantVelocity:  90.0, // 0.8 * 100 + 0.2 * 50
+		},
+		{
+			name:          "not confident - few data points",
+			velocity24h:   100.0,
+			velocity7d:    50.0,
+			dataPoints24h: 3,
+			change24h:     500,
+			wantConfident: false,
+			wantVelocity:  65.0, // 0.3 * 100 + 0.7 * 50
+		},
+		{
+			name:          "not confident - small change",
+			velocity24h:   100.0,
+			velocity7d:    50.0,
+			dataPoints24h: 10,
+			change24h:     5,
+			wantConfident: false,
+			wantVelocity:  65.0, // 0.3 * 100 + 0.7 * 50
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			confident, velocity := CalculateVelocity(tt.velocity24h, tt.velocity7d, tt.dataPoints24h, tt.change24h)
+			if confident != tt.wantConfident {
+				t.Errorf("confident = %v, want %v", confident, tt.wantConfident)
+			}
+			if math.Abs(velocity-tt.wantVelocity) > 0.01 {
+				t.Errorf("velocity = %v, want %v", velocity, tt.wantVelocity)
+			}
+		})
+	}
+}
