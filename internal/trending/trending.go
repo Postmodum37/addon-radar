@@ -2,6 +2,13 @@ package trending
 
 import "math"
 
+const (
+	DownloadWeight = 0.7
+	ThumbsWeight   = 0.2
+	UpdateWeight   = 0.1
+	UpdateBoost    = 10.0 // Boost value when addon has recent update
+)
+
 // CalculateSizeMultiplier returns a value between 0.1 and 1.0
 // based on logarithmic scaling of downloads against the 95th percentile.
 func CalculateSizeMultiplier(downloads, percentile95 float64) float64 {
@@ -49,6 +56,16 @@ func CalculateVelocity(velocity24h, velocity7d float64, dataPoints24h int, chang
 	}
 	// Fall back to longer window
 	return false, (0.3 * velocity24h) + (0.7 * velocity7d)
+}
+
+// CalculateWeightedSignal blends download, thumbs, and update signals.
+// Signal blend: 70% downloads + 20% thumbs + 10% update boost.
+func CalculateWeightedSignal(downloadSignal, thumbsSignal float64, hasRecentUpdate bool) float64 {
+	updateBoost := 0.0
+	if hasRecentUpdate {
+		updateBoost = UpdateBoost
+	}
+	return (DownloadWeight * downloadSignal) + (ThumbsWeight * thumbsSignal) + (UpdateWeight * updateBoost)
 }
 
 func clamp(v, min, max float64) float64 {

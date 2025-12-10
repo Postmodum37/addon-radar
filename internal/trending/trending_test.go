@@ -103,3 +103,44 @@ func TestCalculateVelocity(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateWeightedSignal(t *testing.T) {
+	tests := []struct {
+		name           string
+		downloadSignal float64
+		thumbsSignal   float64
+		hasUpdate      bool
+		want           float64
+	}{
+		{
+			name:           "all signals with update",
+			downloadSignal: 100.0,
+			thumbsSignal:   50.0,
+			hasUpdate:      true,
+			want:           80.0 + 1.0, // 0.7*100 + 0.2*50 + 0.1*10
+		},
+		{
+			name:           "all signals without update",
+			downloadSignal: 100.0,
+			thumbsSignal:   50.0,
+			hasUpdate:      false,
+			want:           80.0, // 0.7*100 + 0.2*50 + 0
+		},
+		{
+			name:           "zero values",
+			downloadSignal: 0,
+			thumbsSignal:   0,
+			hasUpdate:      false,
+			want:           0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateWeightedSignal(tt.downloadSignal, tt.thumbsSignal, tt.hasUpdate)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("CalculateWeightedSignal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
