@@ -16,6 +16,27 @@ func CalculateSizeMultiplier(downloads, percentile95 float64) float64 {
 	return clamp(multiplier, 0.1, 1.0)
 }
 
+// CalculateMaintenanceMultiplier returns a multiplier (0.95-1.15)
+// based on update frequency in the last 90 days.
+func CalculateMaintenanceMultiplier(updatesIn90Days int) float64 {
+	if updatesIn90Days == 0 {
+		return 0.95 // Stale/abandoned
+	}
+
+	avgDaysBetweenUpdates := 90.0 / float64(updatesIn90Days)
+
+	switch {
+	case avgDaysBetweenUpdates <= 14:
+		return 1.15 // Very active
+	case avgDaysBetweenUpdates <= 30:
+		return 1.10 // Regular
+	case avgDaysBetweenUpdates <= 60:
+		return 1.05 // Occasional
+	default:
+		return 1.00 // Baseline
+	}
+}
+
 func clamp(v, min, max float64) float64 {
 	if v < min {
 		return min
