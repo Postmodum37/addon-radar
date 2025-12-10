@@ -24,6 +24,11 @@ type AddonResponse struct {
 	LastUpdatedAt   string   `json:"last_updated_at,omitempty"`
 }
 
+type TrendingAddonResponse struct {
+	AddonResponse
+	Score float64 `json:"score"`
+}
+
 func addonToResponse(a database.Addon) AddonResponse {
 	resp := AddonResponse{
 		ID:            a.ID,
@@ -215,20 +220,34 @@ func (s *Server) handleListCategories(c *gin.Context) {
 func (s *Server) handleTrendingHot(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Placeholder: return top 20 by downloads until trending algorithm is implemented
-	addons, err := s.db.ListAddons(ctx, database.ListAddonsParams{
-		Limit:  20,
-		Offset: 0,
-	})
+	addons, err := s.db.ListHotAddons(ctx, 20)
 	if err != nil {
 		slog.Error("failed to get hot addons", "error", err)
 		respondInternalError(c)
 		return
 	}
 
-	response := make([]AddonResponse, len(addons))
+	response := make([]TrendingAddonResponse, len(addons))
 	for i, a := range addons {
-		response[i] = addonToResponse(a)
+		response[i] = TrendingAddonResponse{
+			AddonResponse: addonToResponse(database.Addon{
+				ID:             a.ID,
+				Name:           a.Name,
+				Slug:           a.Slug,
+				Summary:        a.Summary,
+				AuthorName:     a.AuthorName,
+				LogoUrl:        a.LogoUrl,
+				DownloadCount:  a.DownloadCount,
+				ThumbsUpCount:  a.ThumbsUpCount,
+				PopularityRank: a.PopularityRank,
+				GameVersions:   a.GameVersions,
+				LastUpdatedAt:  a.LastUpdatedAt,
+			}),
+		}
+		if a.HotScore.Valid {
+			f8, _ := a.HotScore.Float64Value()
+			response[i].Score = f8.Float64
+		}
 	}
 
 	respondWithData(c, response)
@@ -237,27 +256,35 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 func (s *Server) handleTrendingRising(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// Placeholder: return addons with 50-10000 downloads until trending algorithm is implemented
-	addons, err := s.db.ListAddons(ctx, database.ListAddonsParams{
-		Limit:  20,
-		Offset: 0,
-	})
+	addons, err := s.db.ListRisingAddons(ctx, 20)
 	if err != nil {
 		slog.Error("failed to get rising addons", "error", err)
 		respondInternalError(c)
 		return
 	}
 
-	// Filter for rising stars range (50-10000 downloads)
-	var filtered []AddonResponse
-	for _, a := range addons {
-		if a.DownloadCount.Int64 >= 50 && a.DownloadCount.Int64 <= 10000 {
-			filtered = append(filtered, addonToResponse(a))
+	response := make([]TrendingAddonResponse, len(addons))
+	for i, a := range addons {
+		response[i] = TrendingAddonResponse{
+			AddonResponse: addonToResponse(database.Addon{
+				ID:             a.ID,
+				Name:           a.Name,
+				Slug:           a.Slug,
+				Summary:        a.Summary,
+				AuthorName:     a.AuthorName,
+				LogoUrl:        a.LogoUrl,
+				DownloadCount:  a.DownloadCount,
+				ThumbsUpCount:  a.ThumbsUpCount,
+				PopularityRank: a.PopularityRank,
+				GameVersions:   a.GameVersions,
+				LastUpdatedAt:  a.LastUpdatedAt,
+			}),
 		}
-		if len(filtered) >= 20 {
-			break
+		if a.RisingScore.Valid {
+			f8, _ := a.RisingScore.Float64Value()
+			response[i].Score = f8.Float64
 		}
 	}
 
-	respondWithData(c, filtered)
+	respondWithData(c, response)
 }
