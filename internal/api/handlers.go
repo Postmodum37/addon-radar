@@ -126,3 +126,52 @@ func (s *Server) handleGetAddon(c *gin.Context) {
 
 	respondWithData(c, addonToResponse(addon))
 }
+
+type SnapshotResponse struct {
+	RecordedAt     string `json:"recorded_at"`
+	DownloadCount  int64  `json:"download_count"`
+	ThumbsUpCount  int32  `json:"thumbs_up_count,omitempty"`
+	PopularityRank int32  `json:"popularity_rank,omitempty"`
+}
+
+func (s *Server) handleGetAddonHistory(c *gin.Context) {
+	slug := c.Param("slug")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "168")) // Default 7 days of hourly data
+	if limit < 1 || limit > 720 {
+		limit = 168
+	}
+
+	ctx := c.Request.Context()
+
+	addon, err := s.db.GetAddonBySlug(ctx, slug)
+	if err != nil {
+		respondNotFound(c, "Addon not found")
+		return
+	}
+
+	snapshots, err := s.db.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
+		AddonID: addon.ID,
+		Limit:   int32(limit),
+	})
+	if err != nil {
+		slog.Error("failed to get snapshots", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	response := make([]SnapshotResponse, len(snapshots))
+	for i, snap := range snapshots {
+		response[i] = SnapshotResponse{
+			RecordedAt:    snap.RecordedAt.Time.Format("2006-01-02T15:04:05Z"),
+			DownloadCount: snap.DownloadCount,
+		}
+		if snap.ThumbsUpCount.Valid {
+			response[i].ThumbsUpCount = snap.ThumbsUpCount.Int32
+		}
+		if snap.PopularityRank.Valid {
+			response[i].PopularityRank = snap.PopularityRank.Int32
+		}
+	}
+
+	respondWithData(c, response)
+}

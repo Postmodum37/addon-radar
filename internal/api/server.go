@@ -34,6 +34,7 @@ func (s *Server) setupRouter() {
 		api.GET("/health", s.handleHealth)
 		api.GET("/addons", s.handleListAddons)
 		api.GET("/addons/:slug", s.handleGetAddon)
+		api.GET("/addons/:slug/history", s.handleGetAddonHistory)
 	}
 
 	s.router = r
