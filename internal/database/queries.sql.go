@@ -11,6 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearRisingAgeForDroppedAddons = `-- name: ClearRisingAgeForDroppedAddons :exec
+UPDATE trending_scores
+SET first_rising_at = NULL
+WHERE addon_id NOT IN (
+    SELECT addon_id FROM trending_scores
+    WHERE rising_score > 0
+    ORDER BY rising_score DESC
+    LIMIT 20
+)
+`
+
+// Reset first_rising_at for addons that dropped out of rising list
+func (q *Queries) ClearRisingAgeForDroppedAddons(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearRisingAgeForDroppedAddons)
+	return err
+}
+
+const clearTrendingAgeForDroppedAddons = `-- name: ClearTrendingAgeForDroppedAddons :exec
+UPDATE trending_scores
+SET first_hot_at = NULL
+WHERE addon_id NOT IN (
+    SELECT addon_id FROM trending_scores
+    WHERE hot_score > 0
+    ORDER BY hot_score DESC
+    LIMIT 20
+)
+`
+
+// Reset first_hot_at for addons that dropped out of hot list
+func (q *Queries) ClearTrendingAgeForDroppedAddons(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearTrendingAgeForDroppedAddons)
+	return err
+}
+
 const countActiveAddons = `-- name: CountActiveAddons :one
 SELECT COUNT(*) FROM addons WHERE status = 'active'
 `
@@ -41,6 +75,27 @@ WHERE status = 'active'
 
 func (q *Queries) CountAddonsByCategory(ctx context.Context, categories []int32) (int64, error) {
 	row := q.db.QueryRow(ctx, countAddonsByCategory, categories)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countRecentFileUpdates = `-- name: CountRecentFileUpdates :one
+SELECT COUNT(DISTINCT DATE(latest_file_date))
+FROM snapshots
+WHERE addon_id = $1
+  AND recorded_at >= NOW() - ($2 || ' days')::INTERVAL
+  AND latest_file_date IS NOT NULL
+`
+
+type CountRecentFileUpdatesParams struct {
+	AddonID int32       `json:"addon_id"`
+	Column2 pgtype.Text `json:"column_2"`
+}
+
+// Counts file updates in last N days (approximated by comparing latest_file_date changes in snapshots)
+func (q *Queries) CountRecentFileUpdates(ctx context.Context, arg CountRecentFileUpdatesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecentFileUpdates, arg.AddonID, arg.Column2)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -162,6 +217,18 @@ func (q *Queries) GetAddonBySlug(ctx context.Context, slug string) (Addon, error
 	return i, err
 }
 
+const getAddonLatestFileDate = `-- name: GetAddonLatestFileDate :one
+SELECT latest_file_date FROM addons WHERE id = $1
+`
+
+// Gets the latest file date for maintenance multiplier
+func (q *Queries) GetAddonLatestFileDate(ctx context.Context, id int32) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getAddonLatestFileDate, id)
+	var latest_file_date pgtype.Timestamptz
+	err := row.Scan(&latest_file_date)
+	return latest_file_date, err
+}
+
 const getAddonSnapshots = `-- name: GetAddonSnapshots :many
 SELECT recorded_at, download_count, thumbs_up_count, popularity_rank
 FROM snapshots
@@ -248,6 +315,20 @@ func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category,
 	return i, err
 }
 
+const getDownloadPercentile = `-- name: GetDownloadPercentile :one
+SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY download_count) AS percentile_95
+FROM addons
+WHERE status = 'active' AND download_count > 0
+`
+
+// Gets the Nth percentile of total downloads for size multiplier calculation
+func (q *Queries) GetDownloadPercentile(ctx context.Context) (float64, error) {
+	row := q.db.QueryRow(ctx, getDownloadPercentile)
+	var percentile_95 float64
+	err := row.Scan(&percentile_95)
+	return percentile_95, err
+}
+
 const getHotAddonIDs = `-- name: GetHotAddonIDs :many
 SELECT id FROM addons WHERE is_hot = TRUE AND status = 'active'
 `
@@ -270,6 +351,69 @@ func (q *Queries) GetHotAddonIDs(ctx context.Context) ([]int32, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const getSnapshotStats = `-- name: GetSnapshotStats :one
+SELECT
+    COALESCE(MAX(download_count) - MIN(download_count), 0) AS download_change,
+    COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0) AS thumbs_change,
+    COUNT(*) AS snapshot_count,
+    MIN(download_count) AS min_downloads,
+    MAX(download_count) AS max_downloads
+FROM snapshots
+WHERE addon_id = $1
+  AND recorded_at >= NOW() - ($2 || ' hours')::INTERVAL
+`
+
+type GetSnapshotStatsParams struct {
+	AddonID int32       `json:"addon_id"`
+	Column2 pgtype.Text `json:"column_2"`
+}
+
+type GetSnapshotStatsRow struct {
+	DownloadChange interface{} `json:"download_change"`
+	ThumbsChange   interface{} `json:"thumbs_change"`
+	SnapshotCount  int64       `json:"snapshot_count"`
+	MinDownloads   interface{} `json:"min_downloads"`
+	MaxDownloads   interface{} `json:"max_downloads"`
+}
+
+// Gets download/thumbs changes for velocity calculation
+func (q *Queries) GetSnapshotStats(ctx context.Context, arg GetSnapshotStatsParams) (GetSnapshotStatsRow, error) {
+	row := q.db.QueryRow(ctx, getSnapshotStats, arg.AddonID, arg.Column2)
+	var i GetSnapshotStatsRow
+	err := row.Scan(
+		&i.DownloadChange,
+		&i.ThumbsChange,
+		&i.SnapshotCount,
+		&i.MinDownloads,
+		&i.MaxDownloads,
+	)
+	return i, err
+}
+
+const getTrendingScore = `-- name: GetTrendingScore :one
+SELECT addon_id, hot_score, rising_score, download_velocity, thumbs_velocity, download_growth_pct, thumbs_growth_pct, size_multiplier, maintenance_multiplier, first_hot_at, first_rising_at, calculated_at FROM trending_scores WHERE addon_id = $1
+`
+
+func (q *Queries) GetTrendingScore(ctx context.Context, addonID int32) (TrendingScore, error) {
+	row := q.db.QueryRow(ctx, getTrendingScore, addonID)
+	var i TrendingScore
+	err := row.Scan(
+		&i.AddonID,
+		&i.HotScore,
+		&i.RisingScore,
+		&i.DownloadVelocity,
+		&i.ThumbsVelocity,
+		&i.DownloadGrowthPct,
+		&i.ThumbsGrowthPct,
+		&i.SizeMultiplier,
+		&i.MaintenanceMultiplier,
+		&i.FirstHotAt,
+		&i.FirstRisingAt,
+		&i.CalculatedAt,
+	)
+	return i, err
 }
 
 const listAddons = `-- name: ListAddons :many
@@ -382,6 +526,47 @@ func (q *Queries) ListAddonsByCategory(ctx context.Context, arg ListAddonsByCate
 	return items, nil
 }
 
+const listAddonsForTrendingCalc = `-- name: ListAddonsForTrendingCalc :many
+SELECT id, download_count, thumbs_up_count, latest_file_date, created_at
+FROM addons
+WHERE status = 'active'
+`
+
+type ListAddonsForTrendingCalcRow struct {
+	ID             int32              `json:"id"`
+	DownloadCount  pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount  pgtype.Int4        `json:"thumbs_up_count"`
+	LatestFileDate pgtype.Timestamptz `json:"latest_file_date"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+// Get addons with basic info needed for trending calculation
+func (q *Queries) ListAddonsForTrendingCalc(ctx context.Context) ([]ListAddonsForTrendingCalcRow, error) {
+	rows, err := q.db.Query(ctx, listAddonsForTrendingCalc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAddonsForTrendingCalcRow{}
+	for rows.Next() {
+		var i ListAddonsForTrendingCalcRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.LatestFileDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategories = `-- name: ListCategories :many
 SELECT id, name, slug, parent_id, icon_url FROM categories ORDER BY name
 `
@@ -401,6 +586,171 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 			&i.Slug,
 			&i.ParentID,
 			&i.IconUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHotAddons = `-- name: ListHotAddons :many
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.hot_score
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0
+ORDER BY t.hot_score DESC
+LIMIT $1
+`
+
+type ListHotAddonsRow struct {
+	ID                int32              `json:"id"`
+	Name              string             `json:"name"`
+	Slug              string             `json:"slug"`
+	Summary           pgtype.Text        `json:"summary"`
+	AuthorName        pgtype.Text        `json:"author_name"`
+	AuthorID          pgtype.Int4        `json:"author_id"`
+	LogoUrl           pgtype.Text        `json:"logo_url"`
+	PrimaryCategoryID pgtype.Int4        `json:"primary_category_id"`
+	Categories        []int32            `json:"categories"`
+	GameVersions      []string           `json:"game_versions"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	LastUpdatedAt     pgtype.Timestamptz `json:"last_updated_at"`
+	LastSyncedAt      pgtype.Timestamptz `json:"last_synced_at"`
+	IsHot             pgtype.Bool        `json:"is_hot"`
+	HotUntil          pgtype.Timestamptz `json:"hot_until"`
+	Status            pgtype.Text        `json:"status"`
+	DownloadCount     pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount     pgtype.Int4        `json:"thumbs_up_count"`
+	PopularityRank    pgtype.Int4        `json:"popularity_rank"`
+	Rating            pgtype.Numeric     `json:"rating"`
+	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
+	HotScore          pgtype.Numeric     `json:"hot_score"`
+}
+
+func (q *Queries) ListHotAddons(ctx context.Context, limit int32) ([]ListHotAddonsRow, error) {
+	rows, err := q.db.Query(ctx, listHotAddons, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHotAddonsRow{}
+	for rows.Next() {
+		var i ListHotAddonsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+			&i.HotScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRisingAddons = `-- name: ListRisingAddons :many
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.rising_score
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  )
+ORDER BY t.rising_score DESC
+LIMIT $1
+`
+
+type ListRisingAddonsRow struct {
+	ID                int32              `json:"id"`
+	Name              string             `json:"name"`
+	Slug              string             `json:"slug"`
+	Summary           pgtype.Text        `json:"summary"`
+	AuthorName        pgtype.Text        `json:"author_name"`
+	AuthorID          pgtype.Int4        `json:"author_id"`
+	LogoUrl           pgtype.Text        `json:"logo_url"`
+	PrimaryCategoryID pgtype.Int4        `json:"primary_category_id"`
+	Categories        []int32            `json:"categories"`
+	GameVersions      []string           `json:"game_versions"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	LastUpdatedAt     pgtype.Timestamptz `json:"last_updated_at"`
+	LastSyncedAt      pgtype.Timestamptz `json:"last_synced_at"`
+	IsHot             pgtype.Bool        `json:"is_hot"`
+	HotUntil          pgtype.Timestamptz `json:"hot_until"`
+	Status            pgtype.Text        `json:"status"`
+	DownloadCount     pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount     pgtype.Int4        `json:"thumbs_up_count"`
+	PopularityRank    pgtype.Int4        `json:"popularity_rank"`
+	Rating            pgtype.Numeric     `json:"rating"`
+	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
+	RisingScore       pgtype.Numeric     `json:"rising_score"`
+}
+
+func (q *Queries) ListRisingAddons(ctx context.Context, limit int32) ([]ListRisingAddonsRow, error) {
+	rows, err := q.db.Query(ctx, listRisingAddons, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRisingAddonsRow{}
+	for rows.Next() {
+		var i ListRisingAddonsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+			&i.RisingScore,
 		); err != nil {
 			return nil, err
 		}
@@ -564,6 +914,59 @@ func (q *Queries) UpsertCategory(ctx context.Context, arg UpsertCategoryParams) 
 		arg.Slug,
 		arg.ParentID,
 		arg.IconUrl,
+	)
+	return err
+}
+
+const upsertTrendingScore = `-- name: UpsertTrendingScore :exec
+INSERT INTO trending_scores (
+    addon_id, hot_score, rising_score,
+    download_velocity, thumbs_velocity,
+    download_growth_pct, thumbs_growth_pct,
+    size_multiplier, maintenance_multiplier,
+    first_hot_at, first_rising_at, calculated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+ON CONFLICT (addon_id) DO UPDATE SET
+    hot_score = EXCLUDED.hot_score,
+    rising_score = EXCLUDED.rising_score,
+    download_velocity = EXCLUDED.download_velocity,
+    thumbs_velocity = EXCLUDED.thumbs_velocity,
+    download_growth_pct = EXCLUDED.download_growth_pct,
+    thumbs_growth_pct = EXCLUDED.thumbs_growth_pct,
+    size_multiplier = EXCLUDED.size_multiplier,
+    maintenance_multiplier = EXCLUDED.maintenance_multiplier,
+    first_hot_at = COALESCE(EXCLUDED.first_hot_at, trending_scores.first_hot_at),
+    first_rising_at = COALESCE(EXCLUDED.first_rising_at, trending_scores.first_rising_at),
+    calculated_at = NOW()
+`
+
+type UpsertTrendingScoreParams struct {
+	AddonID               int32              `json:"addon_id"`
+	HotScore              pgtype.Numeric     `json:"hot_score"`
+	RisingScore           pgtype.Numeric     `json:"rising_score"`
+	DownloadVelocity      pgtype.Numeric     `json:"download_velocity"`
+	ThumbsVelocity        pgtype.Numeric     `json:"thumbs_velocity"`
+	DownloadGrowthPct     pgtype.Numeric     `json:"download_growth_pct"`
+	ThumbsGrowthPct       pgtype.Numeric     `json:"thumbs_growth_pct"`
+	SizeMultiplier        pgtype.Numeric     `json:"size_multiplier"`
+	MaintenanceMultiplier pgtype.Numeric     `json:"maintenance_multiplier"`
+	FirstHotAt            pgtype.Timestamptz `json:"first_hot_at"`
+	FirstRisingAt         pgtype.Timestamptz `json:"first_rising_at"`
+}
+
+func (q *Queries) UpsertTrendingScore(ctx context.Context, arg UpsertTrendingScoreParams) error {
+	_, err := q.db.Exec(ctx, upsertTrendingScore,
+		arg.AddonID,
+		arg.HotScore,
+		arg.RisingScore,
+		arg.DownloadVelocity,
+		arg.ThumbsVelocity,
+		arg.DownloadGrowthPct,
+		arg.ThumbsGrowthPct,
+		arg.SizeMultiplier,
+		arg.MaintenanceMultiplier,
+		arg.FirstHotAt,
+		arg.FirstRisingAt,
 	)
 	return err
 }

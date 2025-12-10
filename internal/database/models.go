@@ -50,3 +50,18 @@ type Snapshot struct {
 	Rating         pgtype.Numeric     `json:"rating"`
 	LatestFileDate pgtype.Timestamptz `json:"latest_file_date"`
 }
+
+type TrendingScore struct {
+	AddonID               int32              `json:"addon_id"`
+	HotScore              pgtype.Numeric     `json:"hot_score"`
+	RisingScore           pgtype.Numeric     `json:"rising_score"`
+	DownloadVelocity      pgtype.Numeric     `json:"download_velocity"`
+	ThumbsVelocity        pgtype.Numeric     `json:"thumbs_velocity"`
+	DownloadGrowthPct     pgtype.Numeric     `json:"download_growth_pct"`
+	ThumbsGrowthPct       pgtype.Numeric     `json:"thumbs_growth_pct"`
+	SizeMultiplier        pgtype.Numeric     `json:"size_multiplier"`
+	MaintenanceMultiplier pgtype.Numeric     `json:"maintenance_multiplier"`
+	FirstHotAt            pgtype.Timestamptz `json:"first_hot_at"`
+	FirstRisingAt         pgtype.Timestamptz `json:"first_rising_at"`
+	CalculatedAt          pgtype.Timestamptz `json:"calculated_at"`
+}

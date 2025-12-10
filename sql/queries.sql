@@ -101,3 +101,112 @@ SELECT * FROM categories ORDER BY name;
 
 -- name: GetCategoryBySlug :one
 SELECT * FROM categories WHERE slug = $1;
+
+-- name: GetSnapshotStats :one
+-- Gets download/thumbs changes for velocity calculation
+SELECT
+    COALESCE(MAX(download_count) - MIN(download_count), 0) AS download_change,
+    COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0) AS thumbs_change,
+    COUNT(*) AS snapshot_count,
+    MIN(download_count) AS min_downloads,
+    MAX(download_count) AS max_downloads
+FROM snapshots
+WHERE addon_id = $1
+  AND recorded_at >= NOW() - ($2 || ' hours')::INTERVAL;
+
+-- name: GetDownloadPercentile :one
+-- Gets the Nth percentile of total downloads for size multiplier calculation
+SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY download_count) AS percentile_95
+FROM addons
+WHERE status = 'active' AND download_count > 0;
+
+-- name: GetAddonLatestFileDate :one
+-- Gets the latest file date for maintenance multiplier
+SELECT latest_file_date FROM addons WHERE id = $1;
+
+-- name: CountRecentFileUpdates :one
+-- Counts file updates in last N days (approximated by comparing latest_file_date changes in snapshots)
+SELECT COUNT(DISTINCT DATE(latest_file_date))
+FROM snapshots
+WHERE addon_id = $1
+  AND recorded_at >= NOW() - ($2 || ' days')::INTERVAL
+  AND latest_file_date IS NOT NULL;
+
+-- name: UpsertTrendingScore :exec
+INSERT INTO trending_scores (
+    addon_id, hot_score, rising_score,
+    download_velocity, thumbs_velocity,
+    download_growth_pct, thumbs_growth_pct,
+    size_multiplier, maintenance_multiplier,
+    first_hot_at, first_rising_at, calculated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+ON CONFLICT (addon_id) DO UPDATE SET
+    hot_score = EXCLUDED.hot_score,
+    rising_score = EXCLUDED.rising_score,
+    download_velocity = EXCLUDED.download_velocity,
+    thumbs_velocity = EXCLUDED.thumbs_velocity,
+    download_growth_pct = EXCLUDED.download_growth_pct,
+    thumbs_growth_pct = EXCLUDED.thumbs_growth_pct,
+    size_multiplier = EXCLUDED.size_multiplier,
+    maintenance_multiplier = EXCLUDED.maintenance_multiplier,
+    first_hot_at = COALESCE(EXCLUDED.first_hot_at, trending_scores.first_hot_at),
+    first_rising_at = COALESCE(EXCLUDED.first_rising_at, trending_scores.first_rising_at),
+    calculated_at = NOW();
+
+-- name: GetTrendingScore :one
+SELECT * FROM trending_scores WHERE addon_id = $1;
+
+-- name: ListHotAddons :many
+SELECT a.*, t.hot_score
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0
+ORDER BY t.hot_score DESC
+LIMIT $1;
+
+-- name: ListRisingAddons :many
+SELECT a.*, t.rising_score
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  )
+ORDER BY t.rising_score DESC
+LIMIT $1;
+
+-- name: ClearTrendingAgeForDroppedAddons :exec
+-- Reset first_hot_at for addons that dropped out of hot list
+UPDATE trending_scores
+SET first_hot_at = NULL
+WHERE addon_id NOT IN (
+    SELECT addon_id FROM trending_scores
+    WHERE hot_score > 0
+    ORDER BY hot_score DESC
+    LIMIT 20
+);
+
+-- name: ClearRisingAgeForDroppedAddons :exec
+-- Reset first_rising_at for addons that dropped out of rising list
+UPDATE trending_scores
+SET first_rising_at = NULL
+WHERE addon_id NOT IN (
+    SELECT addon_id FROM trending_scores
+    WHERE rising_score > 0
+    ORDER BY rising_score DESC
+    LIMIT 20
+);
+
+-- name: ListAddonsForTrendingCalc :many
+-- Get addons with basic info needed for trending calculation
+SELECT id, download_count, thumbs_up_count, latest_file_date, created_at
+FROM addons
+WHERE status = 'active';
