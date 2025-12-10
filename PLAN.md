@@ -82,12 +82,13 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Placeholder trending endpoints
 - [x] Deployed to Railway
 
-### Phase 3: Trending Algorithm (Next)
-- [ ] Implement score calculations
-- [ ] Replace placeholder endpoints
-- [ ] Schedule hourly recalculation
+### Phase 3: Trending Algorithm ✅
+- [x] Implement score calculations
+- [x] Replace placeholder endpoints
+- [x] Schedule hourly recalculation
+- [x] Deploy to production
 
-### Phase 4: Frontend
+### Phase 4: Frontend (Next)
 - [ ] Choose framework (Svelte, React, or HTMX)
 - [ ] Homepage with trending lists
 - [ ] Addon detail pages

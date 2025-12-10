@@ -30,16 +30,27 @@
 - [x] Configure service-specific Railway configs
 - [x] Deploy API to Railway
 
+### Trending Algorithm Implementation (Dec 2025)
+- [x] Add trending_scores table for caching calculations
+- [x] Add SQL queries for snapshot aggregation
+- [x] Implement velocity calculation from snapshots
+- [x] Implement confidence-based adaptive windows (24h vs 7d)
+- [x] Implement logarithmic size multiplier
+- [x] Implement maintenance multiplier
+- [x] Create "Hot Right Now" scoring (gravity 1.5)
+- [x] Create "Rising Stars" scoring (gravity 1.8)
+- [x] Replace placeholder trending endpoints
+- [x] Integrate trending calculation into sync job
+- [x] Deploy to Railway and verify
+
 ## Next Steps
 
-### Priority 1: Trending Algorithm
-- [ ] Implement velocity calculation from snapshots
-- [ ] Implement confidence-based adaptive windows (24h vs 7d)
-- [ ] Implement logarithmic size multiplier
-- [ ] Implement maintenance multiplier
-- [ ] Create "Hot Right Now" scoring (gravity 1.5)
-- [ ] Create "Rising Stars" scoring (gravity 1.8)
-- [ ] Replace placeholder trending endpoints
+### Priority 1: Frontend Development
+- [ ] Choose frontend framework (Svelte, React, or HTMX)
+- [ ] Build homepage with trending lists
+- [ ] Add addon detail pages
+- [ ] Add search functionality
+- [ ] Deploy frontend
 
 ### Priority 2: API Enhancements
 - [ ] Add category filtering to `/addons` endpoint

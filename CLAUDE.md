@@ -18,15 +18,16 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 
 ## Current Status
 
-**Phase 2 Complete**: REST API deployed and serving data.
+**Phase 3 Complete**: Trending algorithm implemented and deployed.
 
 | Component | URL | Status |
 |-----------|-----|--------|
 | API | https://addon-radar-api-production.up.railway.app | ✅ Live |
 | Sync Job | Railway cron (hourly) | ✅ Running |
+| Trending Calculation | Part of sync job | ✅ Running |
 | Frontend | TBD | Planned |
 
-**Data**: 12,424 Retail addons with hourly snapshots accumulating.
+**Data**: 12,424 Retail addons with hourly snapshots and trending scores.
 
 ## Tech Stack
 
@@ -52,7 +53,8 @@ addon-radar/
 │   ├── config/             # Configuration ✅
 │   ├── database/           # sqlc generated ✅
 │   ├── curseforge/         # API client ✅
-│   └── sync/               # Sync service ✅
+│   ├── sync/               # Sync service ✅
+│   └── trending/           # Trending algorithm ✅
 ├── sql/
 │   ├── schema.sql
 │   └── queries.sql
@@ -71,8 +73,8 @@ addon-radar/
 | `GET /api/v1/addons/:slug` | Single addon |
 | `GET /api/v1/addons/:slug/history` | Download history |
 | `GET /api/v1/categories` | All categories |
-| `GET /api/v1/trending/hot` | Hot addons (placeholder) |
-| `GET /api/v1/trending/rising` | Rising addons (placeholder) |
+| `GET /api/v1/trending/hot` | Hot addons (real data) |
+| `GET /api/v1/trending/rising` | Rising addons (real data) |
 
 ## Key Implementation Details
 
@@ -84,6 +86,9 @@ CurseForge API limits results to 10k per query. We use 3 sort orders (popularity
 
 ### Game Version Filtering
 Only syncing Retail addons (gameVersionTypeId=517).
+
+### Trending Algorithm
+Calculates "Hot Right Now" and "Rising Stars" scores using multi-signal blend (downloads, thumbs up, updates), adaptive time windows, logarithmic size multipliers, and maintenance rewards. Runs hourly as part of sync job.
 
 ## Environment Variables
 
@@ -99,10 +104,11 @@ Only syncing Retail addons (gameVersionTypeId=517).
 | Document | Status |
 |----------|--------|
 | `2025-12-08-curseforge-api-design.md` | Reference |
-| `2025-12-08-trending-algorithm-design.md` | **To Implement** |
+| `2025-12-08-trending-algorithm-design.md` | **Implemented** |
 | `2025-12-08-tech-stack-design.md` | Reference |
 | `2025-12-09-sync-job-implementation.md` | Complete |
-| `2025-12-10-rest-api-implementation.md` | **Complete** |
+| `2025-12-10-rest-api-implementation.md` | Complete |
+| `2025-12-10-trending-algorithm-implementation.md` | **Complete** |
 
 ## External Resources
 

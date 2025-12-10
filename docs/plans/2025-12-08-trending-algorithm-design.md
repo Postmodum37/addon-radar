@@ -1,9 +1,9 @@
 # Trending Algorithm Design
 
-> **Status: 🔜 TO IMPLEMENT**
+> **Status: ✅ IMPLEMENTED**
 >
-> This is the main differentiator for Addon Radar. Data is now accumulating via hourly syncs.
-> Implementation is the next major milestone after building the basic web UI.
+> This is the main differentiator for Addon Radar. Implemented and deployed to production.
+> See `/docs/plans/2025-12-10-trending-algorithm-implementation.md` for implementation details.
 
 ## Overview
 
