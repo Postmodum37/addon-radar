@@ -113,3 +113,16 @@ func (s *Server) handleListAddons(c *gin.Context) {
 
 	respondWithPagination(c, response, page, perPage, int(total))
 }
+
+func (s *Server) handleGetAddon(c *gin.Context) {
+	slug := c.Param("slug")
+	ctx := c.Request.Context()
+
+	addon, err := s.db.GetAddonBySlug(ctx, slug)
+	if err != nil {
+		respondNotFound(c, "Addon not found")
+		return
+	}
+
+	respondWithData(c, addonToResponse(addon))
+}
