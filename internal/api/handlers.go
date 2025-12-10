@@ -211,3 +211,53 @@ func (s *Server) handleListCategories(c *gin.Context) {
 
 	respondWithData(c, response)
 }
+
+func (s *Server) handleTrendingHot(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	// Placeholder: return top 20 by downloads until trending algorithm is implemented
+	addons, err := s.db.ListAddons(ctx, database.ListAddonsParams{
+		Limit:  20,
+		Offset: 0,
+	})
+	if err != nil {
+		slog.Error("failed to get hot addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	response := make([]AddonResponse, len(addons))
+	for i, a := range addons {
+		response[i] = addonToResponse(a)
+	}
+
+	respondWithData(c, response)
+}
+
+func (s *Server) handleTrendingRising(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	// Placeholder: return addons with 50-10000 downloads until trending algorithm is implemented
+	addons, err := s.db.ListAddons(ctx, database.ListAddonsParams{
+		Limit:  20,
+		Offset: 0,
+	})
+	if err != nil {
+		slog.Error("failed to get rising addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	// Filter for rising stars range (50-10000 downloads)
+	var filtered []AddonResponse
+	for _, a := range addons {
+		if a.DownloadCount.Int64 >= 50 && a.DownloadCount.Int64 <= 10000 {
+			filtered = append(filtered, addonToResponse(a))
+		}
+		if len(filtered) >= 20 {
+			break
+		}
+	}
+
+	respondWithData(c, filtered)
+}
