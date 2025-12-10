@@ -11,12 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveAddons = `-- name: CountActiveAddons :one
+SELECT COUNT(*) FROM addons WHERE status = 'active'
+`
+
+func (q *Queries) CountActiveAddons(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAddons)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countAddons = `-- name: CountAddons :one
 SELECT COUNT(*) FROM addons WHERE status = 'active'
 `
 
 func (q *Queries) CountAddons(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countAddons)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAddonsByCategory = `-- name: CountAddonsByCategory :one
+SELECT COUNT(*) FROM addons
+WHERE status = 'active'
+  AND $1 = ANY(categories)
+`
+
+func (q *Queries) CountAddonsByCategory(ctx context.Context, categories []int32) (int64, error) {
+	row := q.db.QueryRow(ctx, countAddonsByCategory, categories)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSearchAddons = `-- name: CountSearchAddons :one
+SELECT COUNT(*) FROM addons
+WHERE status = 'active'
+  AND (name ILIKE '%' || $1 || '%' OR summary ILIKE '%' || $1 || '%')
+`
+
+func (q *Queries) CountSearchAddons(ctx context.Context, dollar_1 pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, countSearchAddons, dollar_1)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -93,7 +130,7 @@ func (q *Queries) GetAddonByID(ctx context.Context, id int32) (Addon, error) {
 }
 
 const getAddonBySlug = `-- name: GetAddonBySlug :one
-SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons WHERE slug = $1
+SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons WHERE slug = $1 AND status = 'active'
 `
 
 func (q *Queries) GetAddonBySlug(ctx context.Context, slug string) (Addon, error) {
@@ -125,6 +162,51 @@ func (q *Queries) GetAddonBySlug(ctx context.Context, slug string) (Addon, error
 	return i, err
 }
 
+const getAddonSnapshots = `-- name: GetAddonSnapshots :many
+SELECT recorded_at, download_count, thumbs_up_count, popularity_rank
+FROM snapshots
+WHERE addon_id = $1
+ORDER BY recorded_at DESC
+LIMIT $2
+`
+
+type GetAddonSnapshotsParams struct {
+	AddonID int32 `json:"addon_id"`
+	Limit   int32 `json:"limit"`
+}
+
+type GetAddonSnapshotsRow struct {
+	RecordedAt     pgtype.Timestamptz `json:"recorded_at"`
+	DownloadCount  int64              `json:"download_count"`
+	ThumbsUpCount  pgtype.Int4        `json:"thumbs_up_count"`
+	PopularityRank pgtype.Int4        `json:"popularity_rank"`
+}
+
+func (q *Queries) GetAddonSnapshots(ctx context.Context, arg GetAddonSnapshotsParams) ([]GetAddonSnapshotsRow, error) {
+	rows, err := q.db.Query(ctx, getAddonSnapshots, arg.AddonID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAddonSnapshotsRow{}
+	for rows.Next() {
+		var i GetAddonSnapshotsRow
+		if err := rows.Scan(
+			&i.RecordedAt,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllAddonIDs = `-- name: GetAllAddonIDs :many
 SELECT id FROM addons WHERE status = 'active'
 `
@@ -149,6 +231,23 @@ func (q *Queries) GetAllAddonIDs(ctx context.Context) ([]int32, error) {
 	return items, nil
 }
 
+const getCategoryBySlug = `-- name: GetCategoryBySlug :one
+SELECT id, name, slug, parent_id, icon_url FROM categories WHERE slug = $1
+`
+
+func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category, error) {
+	row := q.db.QueryRow(ctx, getCategoryBySlug, slug)
+	var i Category
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.ParentID,
+		&i.IconUrl,
+	)
+	return i, err
+}
+
 const getHotAddonIDs = `-- name: GetHotAddonIDs :many
 SELECT id FROM addons WHERE is_hot = TRUE AND status = 'active'
 `
@@ -166,6 +265,202 @@ func (q *Queries) GetHotAddonIDs(ctx context.Context) ([]int32, error) {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAddons = `-- name: ListAddons :many
+SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons
+WHERE status = 'active'
+ORDER BY download_count DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListAddonsParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListAddons(ctx context.Context, arg ListAddonsParams) ([]Addon, error) {
+	rows, err := q.db.Query(ctx, listAddons, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Addon{}
+	for rows.Next() {
+		var i Addon
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAddonsByCategory = `-- name: ListAddonsByCategory :many
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date FROM addons a
+WHERE a.status = 'active'
+  AND $3 = ANY(a.categories)
+ORDER BY a.download_count DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListAddonsByCategoryParams struct {
+	Limit      int32   `json:"limit"`
+	Offset     int32   `json:"offset"`
+	Categories []int32 `json:"categories"`
+}
+
+func (q *Queries) ListAddonsByCategory(ctx context.Context, arg ListAddonsByCategoryParams) ([]Addon, error) {
+	rows, err := q.db.Query(ctx, listAddonsByCategory, arg.Limit, arg.Offset, arg.Categories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Addon{}
+	for rows.Next() {
+		var i Addon
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategories = `-- name: ListCategories :many
+SELECT id, name, slug, parent_id, icon_url FROM categories ORDER BY name
+`
+
+func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := q.db.Query(ctx, listCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Category{}
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.ParentID,
+			&i.IconUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchAddons = `-- name: SearchAddons :many
+SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons
+WHERE status = 'active'
+  AND (name ILIKE '%' || $3 || '%' OR summary ILIKE '%' || $3 || '%')
+ORDER BY download_count DESC
+LIMIT $1 OFFSET $2
+`
+
+type SearchAddonsParams struct {
+	Limit   int32       `json:"limit"`
+	Offset  int32       `json:"offset"`
+	Column3 pgtype.Text `json:"column_3"`
+}
+
+func (q *Queries) SearchAddons(ctx context.Context, arg SearchAddonsParams) ([]Addon, error) {
+	rows, err := q.db.Query(ctx, searchAddons, arg.Limit, arg.Offset, arg.Column3)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Addon{}
+	for rows.Next() {
+		var i Addon
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

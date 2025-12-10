@@ -33,7 +33,7 @@ VALUES ($1, NOW(), $2, $3, $4, $5, $6);
 SELECT * FROM addons WHERE id = $1;
 
 -- name: GetAddonBySlug :one
-SELECT * FROM addons WHERE slug = $1;
+SELECT * FROM addons WHERE slug = $1 AND status = 'active';
 
 -- name: GetAllAddonIDs :many
 SELECT id FROM addons WHERE status = 'active';
@@ -55,3 +55,49 @@ ON CONFLICT (id) DO UPDATE SET
     slug = EXCLUDED.slug,
     parent_id = EXCLUDED.parent_id,
     icon_url = EXCLUDED.icon_url;
+
+-- name: ListAddons :many
+SELECT * FROM addons
+WHERE status = 'active'
+ORDER BY download_count DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountActiveAddons :one
+SELECT COUNT(*) FROM addons WHERE status = 'active';
+
+-- name: ListAddonsByCategory :many
+SELECT a.* FROM addons a
+WHERE a.status = 'active'
+  AND $3 = ANY(a.categories)
+ORDER BY a.download_count DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountAddonsByCategory :one
+SELECT COUNT(*) FROM addons
+WHERE status = 'active'
+  AND $1 = ANY(categories);
+
+-- name: SearchAddons :many
+SELECT * FROM addons
+WHERE status = 'active'
+  AND (name ILIKE '%' || $3 || '%' OR summary ILIKE '%' || $3 || '%')
+ORDER BY download_count DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountSearchAddons :one
+SELECT COUNT(*) FROM addons
+WHERE status = 'active'
+  AND (name ILIKE '%' || $1 || '%' OR summary ILIKE '%' || $1 || '%');
+
+-- name: GetAddonSnapshots :many
+SELECT recorded_at, download_count, thumbs_up_count, popularity_rank
+FROM snapshots
+WHERE addon_id = $1
+ORDER BY recorded_at DESC
+LIMIT $2;
+
+-- name: ListCategories :many
+SELECT * FROM categories ORDER BY name;
+
+-- name: GetCategoryBySlug :one
+SELECT * FROM categories WHERE slug = $1;
