@@ -21,159 +21,161 @@ func NewCalculator(db *database.Queries) *Calculator {
 	return &Calculator{db: db}
 }
 
-// CalculateAll recalculates trending scores for all active addons.
+// CalculateAll recalculates trending scores for all active addons using bulk queries.
 func (c *Calculator) CalculateAll(ctx context.Context) error {
 	slog.Info("starting trending calculation")
 	start := time.Now()
 
-	// Get 95th percentile for size multiplier
+	// Step 1: Get 95th percentile
 	percentile95, err := c.db.GetDownloadPercentile(ctx)
 	if err != nil {
 		return err
 	}
 	if percentile95 <= 0 {
-		percentile95 = 500000 // Default fallback
+		percentile95 = 500000
 	}
-	slog.Info("using percentile", "percentile_95", percentile95)
+	slog.Info("percentile", "p95", percentile95)
 
-	// Get all addons for calculation
-	addons, err := c.db.ListAddonsForTrendingCalc(ctx)
+	// Step 2: Bulk fetch all snapshot stats (1 query instead of 2N)
+	allStats, err := c.db.GetAllSnapshotStats(ctx)
 	if err != nil {
 		return err
 	}
-	slog.Info("calculating trending for addons", "count", len(addons))
+	slog.Info("loaded snapshot stats", "count", len(allStats))
 
-	for _, addon := range addons {
-		if err := c.calculateAddon(ctx, addon, percentile95); err != nil {
-			slog.Warn("failed to calculate trending for addon", "addon_id", addon.ID, "error", err)
+	// Step 3: Bulk fetch existing trending scores (1 query instead of N)
+	existingScores, err := c.db.GetAllTrendingScores(ctx)
+	if err != nil {
+		return err
+	}
+	scoreMap := make(map[int32]database.GetAllTrendingScoresRow)
+	for _, s := range existingScores {
+		scoreMap[s.AddonID] = s
+	}
+	slog.Info("loaded existing scores", "count", len(existingScores))
+
+	// Step 4: Bulk fetch update counts (1 query instead of N)
+	updateCounts, err := c.db.CountAllRecentFileUpdates(ctx)
+	if err != nil {
+		return err
+	}
+	updateMap := make(map[int32]int32)
+	for _, u := range updateCounts {
+		updateMap[u.AddonID] = u.UpdateCount
+	}
+	slog.Info("loaded update counts", "count", len(updateCounts))
+
+	// Step 5: Calculate and upsert scores
+	processed := 0
+	for _, stat := range allStats {
+		if err := c.calculateAndUpsert(ctx, stat, percentile95, scoreMap, updateMap); err != nil {
+			slog.Warn("failed addon", "id", stat.AddonID, "err", err)
 			continue
+		}
+		processed++
+		if processed%1000 == 0 {
+			slog.Info("progress", "processed", processed, "total", len(allStats))
 		}
 	}
 
-	// Clear trending age for addons that dropped off
+	// Step 6: Clear ages for dropped addons
 	if err := c.db.ClearTrendingAgeForDroppedAddons(ctx); err != nil {
-		slog.Warn("failed to clear hot age", "error", err)
+		slog.Warn("clear hot age failed", "err", err)
 	}
 	if err := c.db.ClearRisingAgeForDroppedAddons(ctx); err != nil {
-		slog.Warn("failed to clear rising age", "error", err)
+		slog.Warn("clear rising age failed", "err", err)
 	}
 
-	slog.Info("trending calculation complete", "duration", time.Since(start))
+	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
 	return nil
 }
 
-func (c *Calculator) calculateAddon(ctx context.Context, addon database.ListAddonsForTrendingCalcRow, percentile95 float64) error {
-	// Extract downloads from pgtype.Int8
+func (c *Calculator) calculateAndUpsert(
+	ctx context.Context,
+	stat database.GetAllSnapshotStatsRow,
+	percentile95 float64,
+	scoreMap map[int32]database.GetAllTrendingScoresRow,
+	updateMap map[int32]int32,
+) error {
+	// Extract downloads
 	var downloads float64
-	if addon.DownloadCount.Valid {
-		downloads = float64(addon.DownloadCount.Int64)
+	if stat.DownloadCount.Valid {
+		downloads = float64(stat.DownloadCount.Int64)
 	}
 
-	// Get snapshot stats for 24h window
-	stats24h, err := c.db.GetSnapshotStats(ctx, database.GetSnapshotStatsParams{
-		AddonID: addon.ID,
-		Column2: pgtype.Text{String: "24", Valid: true},
-	})
-	if err != nil {
-		return err
-	}
+	// Get values from bulk stats (already native Go types due to SQL casts)
+	downloadChange24h := stat.DownloadChange24h
+	thumbsChange24h := int64(stat.ThumbsChange24h)
+	downloadChange7d := stat.DownloadChange7d
+	thumbsChange7d := int64(stat.ThumbsChange7d)
+	minDownloads := stat.MinDownloads7d
+	snapshotCount24h := stat.SnapshotCount24h
 
-	// Get snapshot stats for 7d window
-	stats7d, err := c.db.GetSnapshotStats(ctx, database.GetSnapshotStatsParams{
-		AddonID: addon.ID,
-		Column2: pgtype.Text{String: "168", Valid: true},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Extract values from interface{} with type assertions
-	downloadChange24h := extractInt64(stats24h.DownloadChange)
-	thumbsChange24h := extractInt64(stats24h.ThumbsChange)
-	downloadChange7d := extractInt64(stats7d.DownloadChange)
-	thumbsChange7d := extractInt64(stats7d.ThumbsChange)
-	minDownloads := extractInt64(stats7d.MinDownloads)
-
-	// Calculate velocities (downloads per hour)
+	// Calculate velocities
 	velocity24h := float64(downloadChange24h) / 24.0
 	velocity7d := float64(downloadChange7d) / 168.0
-
-	// Thumbs velocities
 	thumbsVel24h := float64(thumbsChange24h) / 24.0
 	thumbsVel7d := float64(thumbsChange7d) / 168.0
 
-	// Apply adaptive windows
-	_, downloadVelocity := CalculateVelocity(velocity24h, velocity7d, int(stats24h.SnapshotCount), downloadChange24h)
-	_, thumbsVelocity := CalculateVelocity(thumbsVel24h, thumbsVel7d, int(stats24h.SnapshotCount), thumbsChange24h)
+	// Adaptive windows
+	_, downloadVelocity := CalculateVelocity(velocity24h, velocity7d, int(snapshotCount24h), downloadChange24h)
+	_, thumbsVelocity := CalculateVelocity(thumbsVel24h, thumbsVel7d, int(snapshotCount24h), thumbsChange24h)
 
-	// Calculate growth percentages
+	// Growth percentages
 	var downloadGrowthPct, thumbsGrowthPct float64
 	if minDownloads > 0 {
 		downloadGrowthPct = (float64(downloadChange7d) / float64(minDownloads)) * 100
 	}
 
-	// Calculate thumbs base from addon current count minus change
 	var thumbsBase int32
-	if addon.ThumbsUpCount.Valid {
-		thumbsBase = addon.ThumbsUpCount.Int32 - int32(thumbsChange7d)
+	if stat.ThumbsUpCount.Valid {
+		thumbsBase = stat.ThumbsUpCount.Int32 - int32(thumbsChange7d)
 	}
 	if thumbsBase > 0 {
 		thumbsGrowthPct = (float64(thumbsChange7d) / float64(thumbsBase)) * 100
 	}
 
-	// Size multiplier
+	// Multipliers
 	sizeMultiplier := CalculateSizeMultiplier(downloads, percentile95)
-
-	// Maintenance multiplier (count recent updates)
-	updateCount, err := c.db.CountRecentFileUpdates(ctx, database.CountRecentFileUpdatesParams{
-		AddonID: addon.ID,
-		Column2: pgtype.Text{String: "90", Valid: true},
-	})
-	if err != nil {
-		updateCount = 0
-	}
+	updateCount := updateMap[stat.AddonID]
 	maintenanceMultiplier := CalculateMaintenanceMultiplier(int(updateCount))
 
-	// Check for recent update (within 7 days)
+	// Recent update check
 	hasRecentUpdate := false
-	if addon.LatestFileDate.Valid {
-		hasRecentUpdate = time.Since(addon.LatestFileDate.Time) < 7*24*time.Hour
+	if stat.LatestFileDate.Valid {
+		hasRecentUpdate = time.Since(stat.LatestFileDate.Time) < 7*24*time.Hour
 	}
 
-	// Calculate weighted signals
+	// Weighted signals
 	weightedVelocity := CalculateWeightedSignal(downloadVelocity, thumbsVelocity, hasRecentUpdate)
 	weightedGrowthPct := CalculateWeightedSignal(downloadGrowthPct, thumbsGrowthPct, hasRecentUpdate)
 
-	// Get existing trending score for age calculation
-	existingScore, _ := c.db.GetTrendingScore(ctx, addon.ID)
+	// Age calculation
+	existing := scoreMap[stat.AddonID]
 
-	// Calculate age for hot score
 	var hotAgeHours float64
 	var firstHotAt pgtype.Timestamptz
 	if downloads >= 500 && weightedVelocity > 0 {
-		if existingScore.FirstHotAt.Valid {
-			hotAgeHours = time.Since(existingScore.FirstHotAt.Time).Hours()
-			firstHotAt = existingScore.FirstHotAt
+		if existing.FirstHotAt.Valid {
+			hotAgeHours = time.Since(existing.FirstHotAt.Time).Hours()
+			firstHotAt = existing.FirstHotAt
 		} else {
-			hotAgeHours = 0
 			firstHotAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		}
 	}
 
-	// Calculate age for rising score
 	var risingAgeHours float64
 	var firstRisingAt pgtype.Timestamptz
 	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
-		if existingScore.FirstRisingAt.Valid {
-			risingAgeHours = time.Since(existingScore.FirstRisingAt.Time).Hours()
-			firstRisingAt = existingScore.FirstRisingAt
+		if existing.FirstRisingAt.Valid {
+			risingAgeHours = time.Since(existing.FirstRisingAt.Time).Hours()
+			firstRisingAt = existing.FirstRisingAt
 		} else {
-			risingAgeHours = 0
 			firstRisingAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		}
 	}
 
-	// Calculate final scores
+	// Final scores
 	var hotScore, risingScore float64
 	if downloads >= 500 && weightedVelocity > 0 {
 		hotScore = CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
@@ -182,16 +184,16 @@ func (c *Calculator) calculateAddon(ctx context.Context, addon database.ListAddo
 		risingScore = CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
 	}
 
-	// Convert to pgtype.Numeric for storage
+	// Upsert
 	toNumeric := func(v float64) pgtype.Numeric {
 		var n pgtype.Numeric
-		n.Scan(v)
+		// pgtype.Numeric.Scan cannot scan float64 directly, must use string
+		n.Scan(fmt.Sprintf("%f", v))
 		return n
 	}
 
-	// Upsert trending score
 	return c.db.UpsertTrendingScore(ctx, database.UpsertTrendingScoreParams{
-		AddonID:               addon.ID,
+		AddonID:               stat.AddonID,
 		HotScore:              toNumeric(hotScore),
 		RisingScore:           toNumeric(risingScore),
 		DownloadVelocity:      toNumeric(downloadVelocity),
@@ -203,34 +205,4 @@ func (c *Calculator) calculateAddon(ctx context.Context, addon database.ListAddo
 		FirstHotAt:            firstHotAt,
 		FirstRisingAt:         firstRisingAt,
 	})
-}
-
-// extractInt64 safely extracts an int64 from interface{} returned by database queries
-func extractInt64(v interface{}) int64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case int64:
-		return val
-	case int32:
-		return int64(val)
-	case int:
-		return int64(val)
-	case float64:
-		return int64(val)
-	case pgtype.Numeric:
-		if !val.Valid {
-			return 0
-		}
-		f8, err := val.Float64Value()
-		if err != nil {
-			return 0
-		}
-		return int64(f8.Float64)
-	default:
-		// Log unknown type for debugging
-		slog.Debug("extractInt64: unknown type", "type", fmt.Sprintf("%T", v), "value", v)
-		return 0
-	}
 }
