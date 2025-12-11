@@ -3,26 +3,22 @@ package sync
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"addon-radar/internal/curseforge"
 	"addon-radar/internal/database"
+	"addon-radar/internal/testutil"
 )
 
 // mockCurseForgeClient implements CurseForgeClient for testing
 type mockCurseForgeClient struct {
-	addons     []curseforge.Mod
-	categories []curseforge.Category
-	addonsErr  error
+	addons        []curseforge.Mod
+	categories    []curseforge.Category
+	addonsErr     error
 	categoriesErr error
 }
 
@@ -38,53 +34,6 @@ func (m *mockCurseForgeClient) GetCategories(ctx context.Context, gameID int) ([
 		return nil, m.categoriesErr
 	}
 	return m.categories, nil
-}
-
-// testDB holds the database connection for tests
-type testDB struct {
-	queries *database.Queries
-	pool    *pgxpool.Pool
-}
-
-// setupTestDB creates a PostgreSQL container and returns a testDB instance
-func setupTestDB(t *testing.T) *testDB {
-	ctx := context.Background()
-
-	postgresContainer, err := postgres.Run(ctx,
-		"postgres:15-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second)),
-	)
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		if err := postgresContainer.Terminate(ctx); err != nil {
-			t.Logf("failed to terminate container: %v", err)
-		}
-	})
-
-	connStr, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	pool, err := pgxpool.New(ctx, connStr)
-	require.NoError(t, err)
-	t.Cleanup(func() { pool.Close() })
-
-	// Apply schema
-	schema, err := os.ReadFile("../../sql/schema.sql")
-	require.NoError(t, err)
-	_, err = pool.Exec(ctx, string(schema))
-	require.NoError(t, err)
-
-	return &testDB{
-		queries: database.New(pool),
-		pool:    pool,
-	}
 }
 
 // createTestMod creates a test Mod with sensible defaults
@@ -120,7 +69,7 @@ func createTestMod(id int, slug, name string) curseforge.Mod {
 
 func TestRunFullSync(t *testing.T) {
 	t.Run("success with addons", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
@@ -134,24 +83,24 @@ func TestRunFullSync(t *testing.T) {
 			},
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
 
 		// Verify addons were created
-		addons, err := tdb.queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
+		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
 		assert.Len(t, addons, 3)
 
 		// Verify addon details
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "addon-one")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "addon-one")
 		require.NoError(t, err)
 		assert.Equal(t, "Addon One", addon.Name)
 		assert.Equal(t, int64(1000), addon.DownloadCount.Int64)
 
 		// Verify snapshots were created
-		snapshots, err := tdb.queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
+		snapshots, err := tdb.Queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
 			AddonID: addon.ID,
 			Limit:   10,
 		})
@@ -160,13 +109,13 @@ func TestRunFullSync(t *testing.T) {
 		assert.Equal(t, int64(1000), snapshots[0].DownloadCount)
 
 		// Verify categories were created
-		categories, err := tdb.queries.ListCategories(ctx)
+		categories, err := tdb.Queries.ListCategories(ctx)
 		require.NoError(t, err)
 		assert.Len(t, categories, 1)
 	})
 
 	t.Run("handles empty addons", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
@@ -174,25 +123,25 @@ func TestRunFullSync(t *testing.T) {
 			categories: []curseforge.Category{},
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
 
-		addons, err := tdb.queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
+		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
 		assert.Empty(t, addons)
 	})
 
 	t.Run("returns error on client failure", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
 			addonsErr: errors.New("API connection failed"),
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.Error(t, err)
@@ -200,7 +149,7 @@ func TestRunFullSync(t *testing.T) {
 	})
 
 	t.Run("continues on category sync failure", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
@@ -210,20 +159,20 @@ func TestRunFullSync(t *testing.T) {
 			categoriesErr: errors.New("categories API failed"),
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		// Should not return error - category sync failure is non-critical
 		require.NoError(t, err)
 
 		// Addon should still be synced
-		addons, err := tdb.queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
+		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
 		assert.Len(t, addons, 1)
 	})
 
 	t.Run("deduplication - same addon synced twice", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
@@ -233,7 +182,7 @@ func TestRunFullSync(t *testing.T) {
 			categories: []curseforge.Category{},
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		// First sync
 		err := service.RunFullSync(ctx)
@@ -248,18 +197,18 @@ func TestRunFullSync(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should still have 1 addon (upserted, not duplicated)
-		addons, err := tdb.queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
+		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
 		assert.Len(t, addons, 1)
 
 		// Should have updated values
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "addon-one")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "addon-one")
 		require.NoError(t, err)
 		assert.Equal(t, "Addon One Updated", addon.Name)
 		assert.Equal(t, int64(2000), addon.DownloadCount.Int64)
 
 		// Should have 2 snapshots (one from each sync)
-		snapshots, err := tdb.queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
+		snapshots, err := tdb.Queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
 			AddonID: addon.ID,
 			Limit:   10,
 		})
@@ -270,7 +219,7 @@ func TestRunFullSync(t *testing.T) {
 
 func TestSyncCategories(t *testing.T) {
 	t.Run("syncs categories with parent hierarchy", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mockClient := &mockCurseForgeClient{
@@ -280,12 +229,12 @@ func TestSyncCategories(t *testing.T) {
 			},
 		}
 
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 		err := service.syncCategories(ctx)
 
 		require.NoError(t, err)
 
-		categories, err := tdb.queries.ListCategories(ctx)
+		categories, err := tdb.Queries.ListCategories(ctx)
 		require.NoError(t, err)
 		assert.Len(t, categories, 2)
 
@@ -304,7 +253,7 @@ func TestSyncCategories(t *testing.T) {
 
 func TestUpsertAddon(t *testing.T) {
 	t.Run("handles addon without author", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mod := curseforge.Mod{
@@ -316,18 +265,18 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
 
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "no-author")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "no-author")
 		require.NoError(t, err)
 		assert.False(t, addon.AuthorName.Valid) // Should be NULL
 	})
 
 	t.Run("handles addon without logo", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mod := curseforge.Mod{
@@ -339,18 +288,18 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
 
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "no-logo")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "no-logo")
 		require.NoError(t, err)
 		assert.False(t, addon.LogoUrl.Valid) // Should be NULL
 	})
 
 	t.Run("handles addon with multiple categories", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mod := curseforge.Mod{
@@ -366,19 +315,19 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
 
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "multi-cat")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "multi-cat")
 		require.NoError(t, err)
 		assert.Len(t, addon.Categories, 3)
 		assert.Equal(t, int32(1001), addon.PrimaryCategoryID.Int32)
 	})
 
 	t.Run("handles addon with rating", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		mod := curseforge.Mod{
@@ -390,12 +339,12 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
 
-		addon, err := tdb.queries.GetAddonBySlug(ctx, "rated-addon")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "rated-addon")
 		require.NoError(t, err)
 		assert.True(t, addon.Rating.Valid)
 	})
@@ -403,14 +352,14 @@ func TestUpsertAddon(t *testing.T) {
 
 func TestCreateSnapshot(t *testing.T) {
 	t.Run("creates snapshot with all fields", func(t *testing.T) {
-		tdb := setupTestDB(t)
+		tdb := testutil.SetupTestDB(t)
 		ctx := context.Background()
 
 		// First create an addon
 		mod := createTestMod(1, "snapshot-test", "Snapshot Test")
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.queries, mockClient)
+		service := NewServiceWithClient(tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
@@ -418,8 +367,8 @@ func TestCreateSnapshot(t *testing.T) {
 		err = service.createSnapshot(ctx, mod)
 		require.NoError(t, err)
 
-		addon, _ := tdb.queries.GetAddonBySlug(ctx, "snapshot-test")
-		snapshots, err := tdb.queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
+		addon, _ := tdb.Queries.GetAddonBySlug(ctx, "snapshot-test")
+		snapshots, err := tdb.Queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
 			AddonID: addon.ID,
 			Limit:   10,
 		})

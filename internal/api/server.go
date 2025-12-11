@@ -2,6 +2,7 @@ package api
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -21,9 +22,9 @@ func NewServer(db *database.Queries) *Server {
 	return s
 }
 
-// Router returns the Gin engine for testing
-func (s *Server) Router() *gin.Engine {
-	return s.router
+// ServeHTTP implements the http.Handler interface
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
 }
 
 func (s *Server) setupRouter() {
