@@ -10,6 +10,7 @@ import (
 
 	"addon-radar/internal/api"
 	"addon-radar/internal/config"
+	"addon-radar/internal/database"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 		port = "8080"
 	}
 
-	server := api.NewServer(pool)
+	server := api.NewServer(database.New(pool))
 	if err := server.Run(fmt.Sprintf(":%s", port)); err != nil {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)

@@ -13,10 +13,16 @@ import (
 	"addon-radar/internal/database"
 )
 
+// CurseForgeClient defines the interface for CurseForge API operations
+type CurseForgeClient interface {
+	GetAllWoWAddons(ctx context.Context) ([]curseforge.Mod, error)
+	GetCategories(ctx context.Context, gameID int) ([]curseforge.Category, error)
+}
+
 // Service handles the sync process
 type Service struct {
 	db     *database.Queries
-	client *curseforge.Client
+	client CurseForgeClient
 }
 
 // NewService creates a new sync service
@@ -24,6 +30,14 @@ func NewService(pool *pgxpool.Pool, apiKey string) *Service {
 	return &Service{
 		db:     database.New(pool),
 		client: curseforge.NewClient(apiKey),
+	}
+}
+
+// NewServiceWithClient creates a sync service with a custom client (for testing)
+func NewServiceWithClient(db *database.Queries, client CurseForgeClient) *Service {
+	return &Service{
+		db:     db,
+		client: client,
 	}
 }
 

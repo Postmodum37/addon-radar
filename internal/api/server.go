@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"addon-radar/internal/database"
 )
@@ -14,12 +13,17 @@ type Server struct {
 	router *gin.Engine
 }
 
-func NewServer(pool *pgxpool.Pool) *Server {
+func NewServer(db *database.Queries) *Server {
 	s := &Server{
-		db: database.New(pool),
+		db: db,
 	}
 	s.setupRouter()
 	return s
+}
+
+// Router returns the Gin engine for testing
+func (s *Server) Router() *gin.Engine {
+	return s.router
 }
 
 func (s *Server) setupRouter() {
