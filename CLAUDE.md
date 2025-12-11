@@ -54,10 +54,12 @@ addon-radar/
 │   ├── database/           # sqlc generated ✅
 │   ├── curseforge/         # API client ✅
 │   ├── sync/               # Sync service ✅
+│   ├── testutil/           # Test utilities ✅
 │   └── trending/           # Trending algorithm ✅
 ├── sql/
 │   ├── schema.sql
 │   └── queries.sql
+├── .github/workflows/      # CI/CD ✅
 ├── Dockerfile.sync         # Sync service
 ├── Dockerfile.api          # API service
 ├── railway.toml            # Service configs
@@ -109,6 +111,8 @@ Calculates "Hot Right Now" and "Rising Stars" scores using multi-signal blend (d
 | `2025-12-09-sync-job-implementation.md` | Complete |
 | `2025-12-10-rest-api-implementation.md` | Complete |
 | `2025-12-10-trending-algorithm-implementation.md` | **Complete** |
+| `2025-12-11-trending-calculation-optimization.md` | Complete |
+| `2025-12-11-testing-infrastructure.md` | **Complete** |
 
 ## Serena MCP
 
