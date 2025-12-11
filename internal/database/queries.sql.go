@@ -471,7 +471,7 @@ func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (Category,
 }
 
 const getDownloadPercentile = `-- name: GetDownloadPercentile :one
-SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY download_count) AS percentile_95
+SELECT COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY download_count), 500000)::FLOAT8 AS percentile_95
 FROM addons
 WHERE status = 'active' AND download_count > 0
 `

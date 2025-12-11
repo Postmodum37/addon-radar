@@ -2,9 +2,9 @@ package api
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"addon-radar/internal/database"
 )
@@ -14,12 +14,17 @@ type Server struct {
 	router *gin.Engine
 }
 
-func NewServer(pool *pgxpool.Pool) *Server {
+func NewServer(db *database.Queries) *Server {
 	s := &Server{
-		db: database.New(pool),
+		db: db,
 	}
 	s.setupRouter()
 	return s
+}
+
+// ServeHTTP implements the http.Handler interface
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
 }
 
 func (s *Server) setupRouter() {
