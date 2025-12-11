@@ -2,6 +2,7 @@ package trending
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -216,7 +217,20 @@ func extractInt64(v interface{}) int64 {
 		return int64(val)
 	case int:
 		return int64(val)
+	case float64:
+		return int64(val)
+	case pgtype.Numeric:
+		if !val.Valid {
+			return 0
+		}
+		f8, err := val.Float64Value()
+		if err != nil {
+			return 0
+		}
+		return int64(f8.Float64)
 	default:
+		// Log unknown type for debugging
+		slog.Debug("extractInt64: unknown type", "type", fmt.Sprintf("%T", v), "value", v)
 		return 0
 	}
 }
