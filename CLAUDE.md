@@ -110,6 +110,68 @@ Calculates "Hot Right Now" and "Rising Stars" scores using multi-signal blend (d
 | `2025-12-10-rest-api-implementation.md` | Complete |
 | `2025-12-10-trending-algorithm-implementation.md` | **Complete** |
 
+## Serena MCP
+
+Serena is a semantic code analysis MCP server with persistent memory. Use it for intelligent code exploration and to maintain project knowledge across sessions.
+
+### When to Use Serena
+- **First time in session**: Call `check_onboarding_performed` to load project context
+- **Code exploration**: Use `find_symbol`, `get_symbols_overview`, `find_referencing_symbols` for semantic code navigation
+- **Pattern search**: Use `search_for_pattern` for regex-based searches across codebase
+- **After significant changes**: Update memories with `write_memory` to persist learnings
+
+### Available Memories
+| Memory | Content |
+|--------|---------|
+| `project_overview` | Purpose, tech stack, status, key features |
+| `codebase_structure` | Directory layout, packages, API endpoints |
+| `suggested_commands` | Build, run, test, deploy commands |
+| `style_and_conventions` | Go style, patterns, gotchas (e.g., pgtype.Numeric) |
+| `task_completion_checklist` | Pre-commit and deployment verification |
+
+### Key Serena Tools
+```
+mcp__serena__check_onboarding_performed  # Start of session
+mcp__serena__list_memories               # See available memories
+mcp__serena__read_memory                 # Load specific memory
+mcp__serena__find_symbol                 # Find code symbols by name
+mcp__serena__get_symbols_overview        # Get file structure
+mcp__serena__search_for_pattern          # Regex search
+mcp__serena__write_memory                # Persist new knowledge
+```
+
+## Context7 MCP
+
+Context7 fetches up-to-date documentation for libraries and frameworks. Use it instead of relying on potentially outdated training data.
+
+### When to Use Context7
+- **Using unfamiliar libraries**: Get current API docs and examples
+- **Checking latest syntax**: Verify correct usage of library methods
+- **Debugging library issues**: Fetch docs to understand expected behavior
+- **Before implementing features**: Research library capabilities first
+
+### Key Context7 Tools
+```
+mcp__context7__resolve-library-id   # Find library ID (required first step)
+mcp__context7__get-library-docs     # Fetch documentation for a library
+```
+
+### Example Usage
+```
+# Step 1: Find the library ID
+resolve-library-id("pgx")  → "/jackc/pgx"
+
+# Step 2: Fetch docs (optionally with topic filter)
+get-library-docs("/jackc/pgx", topic="connection pool")
+```
+
+### Libraries Used in This Project
+| Library | Context7 ID | Use For |
+|---------|-------------|---------|
+| pgx/v5 | `/jackc/pgx` | PostgreSQL driver, connection pooling |
+| Gin | `/gin-gonic/gin` | HTTP routing, middleware |
+| sqlc | `/sqlc-dev/sqlc` | SQL code generation |
+
 ## External Resources
 
 - [CurseForge Addons](https://www.curseforge.com/wow)
