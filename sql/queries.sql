@@ -210,3 +210,58 @@ WHERE addon_id NOT IN (
 SELECT id, download_count, thumbs_up_count, latest_file_date, created_at
 FROM addons
 WHERE status = 'active';
+
+-- name: GetAllSnapshotStats :many
+-- Bulk fetch snapshot stats for all addons in both time windows
+WITH stats_24h AS (
+    SELECT
+        addon_id,
+        COALESCE(MAX(download_count) - MIN(download_count), 0)::bigint AS download_change,
+        COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0)::int AS thumbs_change,
+        COUNT(*)::int AS snapshot_count,
+        MIN(download_count)::bigint AS min_downloads
+    FROM snapshots
+    WHERE recorded_at >= NOW() - INTERVAL '24 hours'
+    GROUP BY addon_id
+),
+stats_7d AS (
+    SELECT
+        addon_id,
+        COALESCE(MAX(download_count) - MIN(download_count), 0)::bigint AS download_change,
+        COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0)::int AS thumbs_change,
+        MIN(download_count)::bigint AS min_downloads
+    FROM snapshots
+    WHERE recorded_at >= NOW() - INTERVAL '7 days'
+    GROUP BY addon_id
+)
+SELECT
+    a.id AS addon_id,
+    a.download_count,
+    a.thumbs_up_count,
+    a.latest_file_date,
+    a.created_at,
+    COALESCE(s24.download_change, 0) AS download_change_24h,
+    COALESCE(s24.thumbs_change, 0) AS thumbs_change_24h,
+    COALESCE(s24.snapshot_count, 0) AS snapshot_count_24h,
+    COALESCE(s7.download_change, 0) AS download_change_7d,
+    COALESCE(s7.thumbs_change, 0) AS thumbs_change_7d,
+    COALESCE(s7.min_downloads, a.download_count) AS min_downloads_7d
+FROM addons a
+LEFT JOIN stats_24h s24 ON a.id = s24.addon_id
+LEFT JOIN stats_7d s7 ON a.id = s7.addon_id
+WHERE a.status = 'active';
+
+-- name: GetAllTrendingScores :many
+-- Bulk fetch all existing trending scores
+SELECT addon_id, first_hot_at, first_rising_at
+FROM trending_scores;
+
+-- name: CountAllRecentFileUpdates :many
+-- Bulk count file updates for all addons
+SELECT
+    addon_id,
+    COUNT(DISTINCT DATE(latest_file_date))::int AS update_count
+FROM snapshots
+WHERE recorded_at >= NOW() - INTERVAL '90 days'
+  AND latest_file_date IS NOT NULL
+GROUP BY addon_id;

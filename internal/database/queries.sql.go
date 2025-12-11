@@ -80,6 +80,42 @@ func (q *Queries) CountAddonsByCategory(ctx context.Context, categories []int32)
 	return count, err
 }
 
+const countAllRecentFileUpdates = `-- name: CountAllRecentFileUpdates :many
+SELECT
+    addon_id,
+    COUNT(DISTINCT DATE(latest_file_date))::int AS update_count
+FROM snapshots
+WHERE recorded_at >= NOW() - INTERVAL '90 days'
+  AND latest_file_date IS NOT NULL
+GROUP BY addon_id
+`
+
+type CountAllRecentFileUpdatesRow struct {
+	AddonID     int32 `json:"addon_id"`
+	UpdateCount int32 `json:"update_count"`
+}
+
+// Bulk count file updates for all addons
+func (q *Queries) CountAllRecentFileUpdates(ctx context.Context) ([]CountAllRecentFileUpdatesRow, error) {
+	rows, err := q.db.Query(ctx, countAllRecentFileUpdates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountAllRecentFileUpdatesRow{}
+	for rows.Next() {
+		var i CountAllRecentFileUpdatesRow
+		if err := rows.Scan(&i.AddonID, &i.UpdateCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countRecentFileUpdates = `-- name: CountRecentFileUpdates :one
 SELECT COUNT(DISTINCT DATE(latest_file_date))
 FROM snapshots
@@ -291,6 +327,125 @@ func (q *Queries) GetAllAddonIDs(ctx context.Context) ([]int32, error) {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllSnapshotStats = `-- name: GetAllSnapshotStats :many
+WITH stats_24h AS (
+    SELECT
+        addon_id,
+        COALESCE(MAX(download_count) - MIN(download_count), 0)::bigint AS download_change,
+        COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0)::int AS thumbs_change,
+        COUNT(*)::int AS snapshot_count,
+        MIN(download_count)::bigint AS min_downloads
+    FROM snapshots
+    WHERE recorded_at >= NOW() - INTERVAL '24 hours'
+    GROUP BY addon_id
+),
+stats_7d AS (
+    SELECT
+        addon_id,
+        COALESCE(MAX(download_count) - MIN(download_count), 0)::bigint AS download_change,
+        COALESCE(MAX(thumbs_up_count) - MIN(thumbs_up_count), 0)::int AS thumbs_change,
+        MIN(download_count)::bigint AS min_downloads
+    FROM snapshots
+    WHERE recorded_at >= NOW() - INTERVAL '7 days'
+    GROUP BY addon_id
+)
+SELECT
+    a.id AS addon_id,
+    a.download_count,
+    a.thumbs_up_count,
+    a.latest_file_date,
+    a.created_at,
+    COALESCE(s24.download_change, 0) AS download_change_24h,
+    COALESCE(s24.thumbs_change, 0) AS thumbs_change_24h,
+    COALESCE(s24.snapshot_count, 0) AS snapshot_count_24h,
+    COALESCE(s7.download_change, 0) AS download_change_7d,
+    COALESCE(s7.thumbs_change, 0) AS thumbs_change_7d,
+    COALESCE(s7.min_downloads, a.download_count) AS min_downloads_7d
+FROM addons a
+LEFT JOIN stats_24h s24 ON a.id = s24.addon_id
+LEFT JOIN stats_7d s7 ON a.id = s7.addon_id
+WHERE a.status = 'active'
+`
+
+type GetAllSnapshotStatsRow struct {
+	AddonID           int32              `json:"addon_id"`
+	DownloadCount     pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount     pgtype.Int4        `json:"thumbs_up_count"`
+	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	DownloadChange24h int64              `json:"download_change_24h"`
+	ThumbsChange24h   int32              `json:"thumbs_change_24h"`
+	SnapshotCount24h  int32              `json:"snapshot_count_24h"`
+	DownloadChange7d  int64              `json:"download_change_7d"`
+	ThumbsChange7d    int32              `json:"thumbs_change_7d"`
+	MinDownloads7d    int64              `json:"min_downloads_7d"`
+}
+
+// Bulk fetch snapshot stats for all addons in both time windows
+func (q *Queries) GetAllSnapshotStats(ctx context.Context) ([]GetAllSnapshotStatsRow, error) {
+	rows, err := q.db.Query(ctx, getAllSnapshotStats)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllSnapshotStatsRow{}
+	for rows.Next() {
+		var i GetAllSnapshotStatsRow
+		if err := rows.Scan(
+			&i.AddonID,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.LatestFileDate,
+			&i.CreatedAt,
+			&i.DownloadChange24h,
+			&i.ThumbsChange24h,
+			&i.SnapshotCount24h,
+			&i.DownloadChange7d,
+			&i.ThumbsChange7d,
+			&i.MinDownloads7d,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllTrendingScores = `-- name: GetAllTrendingScores :many
+SELECT addon_id, first_hot_at, first_rising_at
+FROM trending_scores
+`
+
+type GetAllTrendingScoresRow struct {
+	AddonID       int32              `json:"addon_id"`
+	FirstHotAt    pgtype.Timestamptz `json:"first_hot_at"`
+	FirstRisingAt pgtype.Timestamptz `json:"first_rising_at"`
+}
+
+// Bulk fetch all existing trending scores
+func (q *Queries) GetAllTrendingScores(ctx context.Context) ([]GetAllTrendingScoresRow, error) {
+	rows, err := q.db.Query(ctx, getAllTrendingScores)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAllTrendingScoresRow{}
+	for rows.Next() {
+		var i GetAllTrendingScoresRow
+		if err := rows.Scan(&i.AddonID, &i.FirstHotAt, &i.FirstRisingAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
