@@ -43,6 +43,18 @@
 - [x] Integrate trending calculation into sync job
 - [x] Deploy to Railway and verify
 
+### API Resilience (PR #2, Dec 2025)
+- [x] Fix CurseForge API timeout errors (30s → 60s)
+- [x] Add retry logic with exponential backoff (2s, 4s, 8s)
+- [x] Add HTTPError type for proper error classification
+- [x] Add Retry-After header parsing for 429 responses
+- [x] Add circuit breaker (10 consecutive failures)
+- [x] Add io.LimitReader (10MB) for memory protection
+- [x] Add atomic transactions for addon+snapshot writes
+- [x] Add error rate threshold (>1% fails sync)
+- [x] Add comprehensive testing infrastructure (testutil package)
+- [x] Add sync duration warning (>55 min)
+
 ## Next Steps
 
 ### Priority 1: Frontend Development

@@ -88,6 +88,14 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Schedule hourly recalculation
 - [x] Deploy to production
 
+### Phase 3.5: API Resilience (PR #2) ✅
+- [x] Add retry logic with exponential backoff (2s, 4s, 8s)
+- [x] Add Retry-After header parsing for 429 responses
+- [x] Add circuit breaker (fail after 10 consecutive failures)
+- [x] Add atomic transactions for addon+snapshot writes
+- [x] Add comprehensive testing infrastructure (testutil, httptest)
+- [x] Add error rate threshold (fail if >1% errors)
+
 ### Phase 4: Frontend (Next)
 - [ ] Choose framework (Svelte, React, or HTMX)
 - [ ] Homepage with trending lists
