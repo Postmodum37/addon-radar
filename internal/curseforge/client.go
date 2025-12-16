@@ -15,10 +15,10 @@ import (
 
 // Client is a CurseForge API client
 type Client struct {
-	apiKey          string
-	httpClient      *http.Client
-	baseURL         string
-	backoffMultiply time.Duration // For testing: set to 0 to disable backoff
+	apiKey            string
+	httpClient        *http.Client
+	baseURL           string
+	backoffMultiplier time.Duration // For testing: set to 0 to disable backoff
 }
 
 // NewClient creates a new CurseForge API client
@@ -28,8 +28,8 @@ func NewClient(apiKey string) *Client {
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		baseURL:         BaseURL,
-		backoffMultiply: time.Second, // 1 second multiplier (2s, 4s, 8s backoff)
+		baseURL:           BaseURL,
+		backoffMultiplier: time.Second, // 1 second multiplier (2s, 4s, 8s backoff)
 	}
 }
 
@@ -39,6 +39,7 @@ type HTTPError struct {
 	Body       string
 	Path       string
 	Method     string
+	RetryAfter time.Duration // Parsed from Retry-After header for 429 responses
 }
 
 func (e *HTTPError) Error() string {
@@ -76,12 +77,17 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: 2s, 4s, 8s (or instant if backoffMultiply is 0)
-			backoff := time.Duration(1<<uint(attempt)) * c.backoffMultiply
+			// Use Retry-After if available (for 429), otherwise exponential backoff
+			backoff := time.Duration(1<<uint(attempt)) * c.backoffMultiplier
+			if httpErr, ok := lastErr.(*HTTPError); ok && httpErr.RetryAfter > 0 {
+				backoff = httpErr.RetryAfter
+			}
+
 			slog.Warn("retrying request",
 				"method", method,
 				"path", path,
 				"attempt", attempt,
+				"backoff", backoff,
 				"error", lastErr,
 			)
 
@@ -137,12 +143,23 @@ func (c *Client) doRequestOnce(ctx context.Context, method, path string, query u
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{
+		httpErr := &HTTPError{
 			StatusCode: resp.StatusCode,
 			Body:       string(body),
 			Path:       path,
 			Method:     method,
 		}
+
+		// Parse Retry-After header for 429 responses
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if seconds, err := strconv.Atoi(retryAfter); err == nil {
+					httpErr.RetryAfter = time.Duration(seconds) * time.Second
+				}
+			}
+		}
+
+		return nil, httpErr
 	}
 
 	return body, nil
@@ -188,6 +205,8 @@ func (c *Client) SearchMods(ctx context.Context, params SearchModsParams) (*Sear
 func (c *Client) GetAllAddonsForVersion(ctx context.Context, gameVersionTypeID int) ([]Mod, error) {
 	seen := make(map[int]bool)
 	var allMods []Mod
+	var consecutiveFailures int
+	const maxConsecutiveFailures = 10 // Circuit breaker threshold
 
 	// Use multiple sort orders to get different subsets of addons
 	sortOrders := []struct {
@@ -204,8 +223,13 @@ func (c *Client) GetAllAddonsForVersion(ctx context.Context, gameVersionTypeID i
 
 		mods, err := c.fetchWithSort(ctx, gameVersionTypeID, sort.field)
 		if err != nil {
+			consecutiveFailures++
+			if consecutiveFailures >= maxConsecutiveFailures {
+				return nil, fmt.Errorf("circuit breaker: %d consecutive failures, last error: %w", consecutiveFailures, err)
+			}
 			return nil, fmt.Errorf("fetch by %s: %w", sort.name, err)
 		}
+		consecutiveFailures = 0 // Reset on success
 
 		// Deduplicate
 		newCount := 0

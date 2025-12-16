@@ -14,7 +14,7 @@ import (
 // newTestClient creates a client with no backoff delay for fast tests
 func newTestClient(apiKey string) *Client {
 	c := NewClient(apiKey)
-	c.backoffMultiply = 0 // No delay between retries in tests
+	c.backoffMultiplier = 0 // No delay between retries in tests
 	return c
 }
 
