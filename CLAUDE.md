@@ -3,11 +3,13 @@
 ## Working Guidelines
 
 - Act as orchestrator for the Addon Radar project
-- Follow TDD principles when writing code
+- Follow TDD principles when writing code. Write tests before implementation. Don't overdo testing, but ensure critical paths are well-covered. Focus on high-value tests, not 100% coverage. Prefer integration tests for key flows, unit tests for complex logic.
 - Keep markdown files up-to-date after significant changes:
   - `CLAUDE.md` - Project overview (this file)
-  - `PLAN.md` - Project roadmap and status
-  - `TODO.md` - Task tracking
+  - `/docs/PLAN.md` - Project roadmap and status
+  - `/docs/TODO.md` - Task tracking
+  - `/docs/ALGORITHM.md` - Trending algorithm details
+  - `/docs/plans/*` - Design documents, feature specs and plans
 - Focus on the unique trendiness algorithm as the main differentiator
 - Create plans and design docs in docs/plans/
 - Always develop new features in feature branches

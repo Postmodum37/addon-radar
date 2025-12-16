@@ -42,8 +42,8 @@ A website that helps World of Warcraft players discover trending and rising addo
 | `GET /api/v1/addons/:slug` | Single addon |
 | `GET /api/v1/addons/:slug/history` | Download history |
 | `GET /api/v1/categories` | All categories |
-| `GET /api/v1/trending/hot` | Hot addons (placeholder) |
-| `GET /api/v1/trending/rising` | Rising addons (placeholder) |
+| `GET /api/v1/trending/hot` | Hot addons (real data) |
+| `GET /api/v1/trending/rising` | Rising addons (real data) |
 
 ## Trending Algorithm Design
 
@@ -59,7 +59,7 @@ A website that helps World of Warcraft players discover trending and rising addo
 - Aggressive decay (gravity 1.8)
 - Same signal blend
 
-### Key Features (To Implement)
+### Key Features (Implemented)
 - Adaptive time windows (24h vs 7d confidence-based)
 - Logarithmic size multiplier
 - Maintenance reward (0.95x-1.15x)
