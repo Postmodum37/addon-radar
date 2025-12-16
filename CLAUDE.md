@@ -8,6 +8,7 @@
   - `CLAUDE.md` - Project overview (this file)
   - `PLAN.md` - Project roadmap and status
   - `TODO.md` - Task tracking
+- Update Serena MCP memories after major milestones (features, bug fixes, new PRs)
 - Focus on the unique trendiness algorithm as the main differentiator
 - Create plans and design docs in docs/plans/
 - Always develop new features in feature branches
