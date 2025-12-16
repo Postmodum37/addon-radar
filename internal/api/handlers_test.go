@@ -24,7 +24,8 @@ func TestHealth(t *testing.T) {
 	server := NewServer(tdb.Queries)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/health", nil)
+	req, err := http.NewRequest("GET", "/api/v1/health", nil)
+	require.NoError(t, err)
 	server.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -47,7 +48,8 @@ func TestGetAddon(t *testing.T) {
 
 	t.Run("existing addon", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons/test-addon", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons/test-addon", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
@@ -56,14 +58,16 @@ func TestGetAddon(t *testing.T) {
 		err = json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
-		data := resp["data"].(map[string]interface{})
+		data, ok := resp["data"].(map[string]interface{})
+		require.True(t, ok)
 		assert.Equal(t, "test-addon", data["slug"])
 		assert.Equal(t, "Test Addon", data["name"])
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons/nonexistent", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons/nonexistent", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 404, w.Code)
@@ -78,7 +82,7 @@ func TestListAddons(t *testing.T) {
 	// Seed test addons
 	for i := 1; i <= 25; i++ {
 		err := tdb.Queries.UpsertAddon(ctx, database.UpsertAddonParams{
-			ID:   int32(i),
+			ID:   int32(i), //nolint:gosec // Test data with small known values
 			Slug: "addon-" + string(rune('a'+i-1)),
 			Name: "Addon " + string(rune('A'+i-1)),
 		})
@@ -89,13 +93,14 @@ func TestListAddons(t *testing.T) {
 
 	t.Run("default pagination", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
 
 		var resp PaginatedResponse
-		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
 		assert.Equal(t, 1, resp.Meta.Page)
@@ -106,13 +111,14 @@ func TestListAddons(t *testing.T) {
 
 	t.Run("custom page size", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons?per_page=10&page=2", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons?per_page=10&page=2", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
 
 		var resp PaginatedResponse
-		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
 		assert.Equal(t, 2, resp.Meta.Page)
@@ -121,7 +127,8 @@ func TestListAddons(t *testing.T) {
 
 	t.Run("search", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons?search=Addon%20A", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons?search=Addon%20A", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
@@ -144,7 +151,8 @@ func TestListCategories(t *testing.T) {
 	server := NewServer(tdb.Queries)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/categories", nil)
+	req, err := http.NewRequest("GET", "/api/v1/categories", nil)
+	require.NoError(t, err)
 	server.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -153,7 +161,8 @@ func TestListCategories(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 
-	data := resp["data"].([]interface{})
+	data, ok := resp["data"].([]interface{})
+	require.True(t, ok)
 	assert.Len(t, data, 1)
 }
 
@@ -178,7 +187,8 @@ func TestTrendingHot(t *testing.T) {
 	server := NewServer(tdb.Queries)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/trending/hot", nil)
+	req, err := http.NewRequest("GET", "/api/v1/trending/hot", nil)
+	require.NoError(t, err)
 	server.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -187,9 +197,11 @@ func TestTrendingHot(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 
-	data := resp["data"].([]interface{})
+	data, ok := resp["data"].([]interface{})
+	require.True(t, ok)
 	if assert.Len(t, data, 1) {
-		addon := data[0].(map[string]interface{})
+		addon, ok := data[0].(map[string]interface{})
+		require.True(t, ok)
 		assert.Equal(t, "hot-addon", addon["slug"])
 		assert.InDelta(t, 100.5, addon["score"], 0.1)
 	}
@@ -216,7 +228,8 @@ func TestTrendingRising(t *testing.T) {
 	server := NewServer(tdb.Queries)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/trending/rising", nil)
+	req, err := http.NewRequest("GET", "/api/v1/trending/rising", nil)
+	require.NoError(t, err)
 	server.ServeHTTP(w, req)
 
 	assert.Equal(t, 200, w.Code)
@@ -225,9 +238,11 @@ func TestTrendingRising(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 
-	data := resp["data"].([]interface{})
+	data, ok := resp["data"].([]interface{})
+	require.True(t, ok)
 	if assert.Len(t, data, 1) {
-		addon := data[0].(map[string]interface{})
+		addon, ok := data[0].(map[string]interface{})
+		require.True(t, ok)
 		assert.Equal(t, "rising-addon", addon["slug"])
 		assert.InDelta(t, 50.25, addon["score"], 0.1)
 	}
@@ -258,22 +273,25 @@ func TestGetAddonHistory(t *testing.T) {
 
 	t.Run("returns history", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons/history-addon/history", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons/history-addon/history", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
 
 		var resp map[string]interface{}
-		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
-		data := resp["data"].([]interface{})
+		data, ok := resp["data"].([]interface{})
+		require.True(t, ok)
 		assert.Len(t, data, 5)
 	})
 
 	t.Run("addon not found", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons/nonexistent/history", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons/nonexistent/history", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 404, w.Code)
@@ -281,16 +299,18 @@ func TestGetAddonHistory(t *testing.T) {
 
 	t.Run("respects limit", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest("GET", "/api/v1/addons/history-addon/history?limit=2", nil)
+		req, err := http.NewRequest("GET", "/api/v1/addons/history-addon/history?limit=2", nil)
+		require.NoError(t, err)
 		server.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
 
 		var resp map[string]interface{}
-		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
-		data := resp["data"].([]interface{})
+		data, ok := resp["data"].([]interface{})
+		require.True(t, ok)
 		assert.Len(t, data, 2)
 	})
 }
@@ -300,7 +320,8 @@ func TestCORS(t *testing.T) {
 	server := NewServer(tdb.Queries)
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("OPTIONS", "/api/v1/health", nil)
+	req, err := http.NewRequest("OPTIONS", "/api/v1/health", nil)
+	require.NoError(t, err)
 	server.ServeHTTP(w, req)
 
 	assert.Equal(t, 204, w.Code)

@@ -106,7 +106,7 @@ func (s *Service) syncAddon(ctx context.Context, mod curseforge.Mod) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck // Rollback in defer is safe to ignore
 
 	qtx := s.db.WithTx(tx)
 
@@ -141,7 +141,7 @@ func (s *Service) syncCategories(ctx context.Context) error {
 		}
 
 		err := s.db.UpsertCategory(ctx, database.UpsertCategoryParams{
-			ID:       int32(cat.ID),
+			ID:       int32(cat.ID), //nolint:gosec // CurseForge API IDs are always valid int32
 			Name:     cat.Name,
 			Slug:     cat.Slug,
 			ParentID: pgtype.Int4{}, // No parent reference initially
@@ -161,10 +161,10 @@ func (s *Service) syncCategories(ctx context.Context) error {
 			}
 
 			err := s.db.UpsertCategory(ctx, database.UpsertCategoryParams{
-				ID:       int32(cat.ID),
+				ID:       int32(cat.ID),                                          //nolint:gosec // CurseForge API IDs are always valid int32
 				Name:     cat.Name,
 				Slug:     cat.Slug,
-				ParentID: pgtype.Int4{Int32: int32(cat.ParentID), Valid: true},
+				ParentID: pgtype.Int4{Int32: int32(cat.ParentID), Valid: true}, //nolint:gosec // CurseForge API IDs are always valid int32
 				IconUrl:  iconURL,
 			})
 			if err != nil {
@@ -184,7 +184,7 @@ func (s *Service) upsertAddonWithTx(ctx context.Context, qtx *database.Queries, 
 	var authorID pgtype.Int4
 	if len(mod.Authors) > 0 {
 		authorName = pgtype.Text{String: mod.Authors[0].Name, Valid: true}
-		authorID = pgtype.Int4{Int32: int32(mod.Authors[0].ID), Valid: true}
+		authorID = pgtype.Int4{Int32: int32(mod.Authors[0].ID), Valid: true} //nolint:gosec // CurseForge API IDs are always valid int32
 	}
 
 	// Extract logo URL
@@ -197,9 +197,9 @@ func (s *Service) upsertAddonWithTx(ctx context.Context, qtx *database.Queries, 
 	categoryIDs := make([]int32, len(mod.Categories))
 	var primaryCategoryID pgtype.Int4
 	for i, cat := range mod.Categories {
-		categoryIDs[i] = int32(cat.ID)
+		categoryIDs[i] = int32(cat.ID) //nolint:gosec // CurseForge API IDs are always valid int32
 		if i == 0 {
-			primaryCategoryID = pgtype.Int4{Int32: int32(cat.ID), Valid: true}
+			primaryCategoryID = pgtype.Int4{Int32: int32(cat.ID), Valid: true} //nolint:gosec // CurseForge API IDs are always valid int32
 		}
 	}
 
@@ -226,10 +226,10 @@ func (s *Service) upsertAddonWithTx(ctx context.Context, qtx *database.Queries, 
 	downloadCount := pgtype.Int8{Int64: mod.DownloadCount, Valid: true}
 
 	// Thumbs up count
-	thumbsUpCount := pgtype.Int4{Int32: int32(mod.ThumbsUpCount), Valid: true}
+	thumbsUpCount := pgtype.Int4{Int32: int32(mod.ThumbsUpCount), Valid: true} //nolint:gosec // CurseForge API values are always valid int32
 
 	// Popularity rank
-	popularityRank := pgtype.Int4{Int32: int32(mod.PopularityRank), Valid: true}
+	popularityRank := pgtype.Int4{Int32: int32(mod.PopularityRank), Valid: true} //nolint:gosec // CurseForge API values are always valid int32
 
 	// Calculate rating as numeric
 	var rating pgtype.Numeric
@@ -240,7 +240,7 @@ func (s *Service) upsertAddonWithTx(ctx context.Context, qtx *database.Queries, 
 	}
 
 	return qtx.UpsertAddon(ctx, database.UpsertAddonParams{
-		ID:                int32(mod.ID),
+		ID:                int32(mod.ID), //nolint:gosec // CurseForge API IDs are always valid int32
 		Name:              mod.Name,
 		Slug:              mod.Slug,
 		Summary:           summary,
@@ -274,11 +274,11 @@ func (s *Service) createSnapshotWithTx(ctx context.Context, qtx *database.Querie
 		}
 	}
 
-	thumbsUpCount := pgtype.Int4{Int32: int32(mod.ThumbsUpCount), Valid: true}
-	popularityRank := pgtype.Int4{Int32: int32(mod.PopularityRank), Valid: true}
+	thumbsUpCount := pgtype.Int4{Int32: int32(mod.ThumbsUpCount), Valid: true}   //nolint:gosec // CurseForge API values are always valid int32
+	popularityRank := pgtype.Int4{Int32: int32(mod.PopularityRank), Valid: true} //nolint:gosec // CurseForge API values are always valid int32
 
 	return qtx.CreateSnapshot(ctx, database.CreateSnapshotParams{
-		AddonID:        int32(mod.ID),
+		AddonID:        int32(mod.ID), //nolint:gosec // CurseForge API IDs are always valid int32
 		DownloadCount:  mod.DownloadCount,
 		ThumbsUpCount:  thumbsUpCount,
 		PopularityRank: popularityRank,

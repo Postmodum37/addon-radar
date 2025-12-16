@@ -133,7 +133,7 @@ func (c *Client) doRequestOnce(ctx context.Context, method, path string, query u
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // Defer close is safe to ignore
 
 	// Limit response body to 10MB to prevent memory exhaustion
 	const maxResponseSize = 10 * 1024 * 1024

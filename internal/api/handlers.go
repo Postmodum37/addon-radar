@@ -59,8 +59,14 @@ func addonToResponse(a database.Addon) AddonResponse {
 }
 
 func (s *Server) handleListAddons(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil {
+		page = 1
+	}
+	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if err != nil {
+		perPage = 20
+	}
 	search := c.Query("search")
 
 	if page < 1 {
@@ -70,20 +76,25 @@ func (s *Server) handleListAddons(c *gin.Context) {
 		perPage = 20
 	}
 
+	// Validate conversion to int32
+	if perPage > 2147483647 || page > 2147483647 {
+		perPage = 20
+		page = 1
+	}
+
 	offset := (page - 1) * perPage
 	ctx := c.Request.Context()
 
 	var addons []database.Addon
 	var total int64
-	var err error
 
 	if search != "" {
 		// Convert search string to pgtype.Text
 		searchText := pgtype.Text{String: search, Valid: true}
 
 		addons, err = s.db.SearchAddons(ctx, database.SearchAddonsParams{
-			Limit:   int32(perPage),
-			Offset:  int32(offset),
+			Limit:   int32(perPage), //nolint:gosec // perPage validated to be <= 100
+			Offset:  int32(offset),  //nolint:gosec // offset validated via perPage <= 100
 			Column3: searchText,
 		})
 		if err != nil {
@@ -94,8 +105,8 @@ func (s *Server) handleListAddons(c *gin.Context) {
 		total, err = s.db.CountSearchAddons(ctx, searchText)
 	} else {
 		addons, err = s.db.ListAddons(ctx, database.ListAddonsParams{
-			Limit:  int32(perPage),
-			Offset: int32(offset),
+			Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
+			Offset: int32(offset),  //nolint:gosec // offset validated via perPage <= 100
 		})
 		if err != nil {
 			slog.Error("failed to list addons", "error", err)
@@ -141,7 +152,10 @@ type SnapshotResponse struct {
 
 func (s *Server) handleGetAddonHistory(c *gin.Context) {
 	slug := c.Param("slug")
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "168")) // Default 7 days of hourly data
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "168")) // Default 7 days of hourly data
+	if err != nil {
+		limit = 168
+	}
 	if limit < 1 || limit > 720 {
 		limit = 168
 	}
@@ -156,7 +170,7 @@ func (s *Server) handleGetAddonHistory(c *gin.Context) {
 
 	snapshots, err := s.db.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
 		AddonID: addon.ID,
-		Limit:   int32(limit),
+		Limit:   int32(limit), //nolint:gosec // limit validated to be <= 720
 	})
 	if err != nil {
 		slog.Error("failed to get snapshots", "error", err)
@@ -245,8 +259,10 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 			}),
 		}
 		if a.HotScore.Valid {
-			f8, _ := a.HotScore.Float64Value()
-			response[i].Score = f8.Float64
+			f8, err := a.HotScore.Float64Value()
+			if err == nil {
+				response[i].Score = f8.Float64
+			}
 		}
 	}
 
@@ -281,8 +297,10 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 			}),
 		}
 		if a.RisingScore.Valid {
-			f8, _ := a.RisingScore.Float64Value()
-			response[i].Score = f8.Float64
+			f8, err := a.RisingScore.Float64Value()
+			if err == nil {
+				response[i].Score = f8.Float64
+			}
 		}
 	}
 

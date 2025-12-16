@@ -53,10 +53,6 @@ func respondNotFound(c *gin.Context, message string) {
 	respondWithError(c, 404, "not_found", message)
 }
 
-func respondBadRequest(c *gin.Context, message string) {
-	respondWithError(c, 400, "bad_request", message)
-}
-
 func respondInternalError(c *gin.Context) {
 	respondWithError(c, 500, "internal_error", "An unexpected error occurred")
 }
