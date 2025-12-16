@@ -1,0 +1,22 @@
+# lefthook.yml
+# Fast Git hooks manager - https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: "*.go"
+      run: golangci-lint run --new-from-rev=HEAD~1
+      stage_fixed: true
+    fmt:
+      glob: "*.go"
+      run: gofmt -l -w {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    test:
+      run: go test ./... -race -timeout=5m
+    lint-all:
+      run: golangci-lint run ./... --timeout=5m
