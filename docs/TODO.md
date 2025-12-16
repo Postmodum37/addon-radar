@@ -78,13 +78,6 @@
 - [ ] Add sorting options (downloads, updated, name)
 - [ ] Add rate limiting (optional)
 
-### Priority 3: Frontend
-- [ ] Choose frontend framework (Svelte, React, or HTMX)
-- [ ] Build homepage with trending lists
-- [ ] Add addon detail pages
-- [ ] Add search functionality
-- [ ] Deploy frontend
-
 ### Future Enhancements
 - [ ] Hot addon detection for faster sync
 - [ ] Historical charts on addon pages
