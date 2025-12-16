@@ -367,7 +367,8 @@ func TestCreateSnapshot(t *testing.T) {
 		err = service.createSnapshot(ctx, mod)
 		require.NoError(t, err)
 
-		addon, _ := tdb.Queries.GetAddonBySlug(ctx, "snapshot-test")
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "snapshot-test")
+		require.NoError(t, err)
 		snapshots, err := tdb.Queries.GetAddonSnapshots(ctx, database.GetAddonSnapshotsParams{
 			AddonID: addon.ID,
 			Limit:   10,

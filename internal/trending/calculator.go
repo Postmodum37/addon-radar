@@ -103,37 +103,9 @@ func (c *Calculator) calculateAndUpsert(
 		downloads = float64(stat.DownloadCount.Int64)
 	}
 
-	// Get values from bulk stats (already native Go types due to SQL casts)
-	downloadChange24h := stat.DownloadChange24h
-	thumbsChange24h := int64(stat.ThumbsChange24h)
-	downloadChange7d := stat.DownloadChange7d
-	thumbsChange7d := int64(stat.ThumbsChange7d)
-	minDownloads := stat.MinDownloads7d
-	snapshotCount24h := stat.SnapshotCount24h
-
-	// Calculate velocities
-	velocity24h := float64(downloadChange24h) / 24.0
-	velocity7d := float64(downloadChange7d) / 168.0
-	thumbsVel24h := float64(thumbsChange24h) / 24.0
-	thumbsVel7d := float64(thumbsChange7d) / 168.0
-
-	// Adaptive windows
-	_, downloadVelocity := CalculateVelocity(velocity24h, velocity7d, int(snapshotCount24h), downloadChange24h)
-	_, thumbsVelocity := CalculateVelocity(thumbsVel24h, thumbsVel7d, int(snapshotCount24h), thumbsChange24h)
-
-	// Growth percentages
-	var downloadGrowthPct, thumbsGrowthPct float64
-	if minDownloads > 0 {
-		downloadGrowthPct = (float64(downloadChange7d) / float64(minDownloads)) * 100
-	}
-
-	var thumbsBase int32
-	if stat.ThumbsUpCount.Valid {
-		thumbsBase = stat.ThumbsUpCount.Int32 - int32(thumbsChange7d)
-	}
-	if thumbsBase > 0 {
-		thumbsGrowthPct = (float64(thumbsChange7d) / float64(thumbsBase)) * 100
-	}
+	// Calculate velocities and growth
+	downloadVelocity, thumbsVelocity := c.calculateVelocities(stat)
+	downloadGrowthPct, thumbsGrowthPct := c.calculateGrowthPercentages(stat)
 
 	// Multipliers
 	sizeMultiplier := CalculateSizeMultiplier(downloads, percentile95)
@@ -150,9 +122,60 @@ func (c *Calculator) calculateAndUpsert(
 	weightedVelocity := CalculateWeightedSignal(downloadVelocity, thumbsVelocity, hasRecentUpdate)
 	weightedGrowthPct := CalculateWeightedSignal(downloadGrowthPct, thumbsGrowthPct, hasRecentUpdate)
 
-	// Age calculation
+	// Calculate age and timestamps
 	existing := scoreMap[stat.AddonID]
+	hotAgeHours, firstHotAt := c.calculateHotAge(downloads, weightedVelocity, existing)
+	risingAgeHours, firstRisingAt := c.calculateRisingAge(downloads, weightedGrowthPct, existing)
 
+	// Final scores
+	hotScore := c.calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+	risingScore := c.calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+
+	// Upsert
+	return c.upsertScore(ctx, stat.AddonID, hotScore, risingScore, downloadVelocity, thumbsVelocity,
+		downloadGrowthPct, thumbsGrowthPct, sizeMultiplier, maintenanceMultiplier, firstHotAt, firstRisingAt)
+}
+
+func (c *Calculator) calculateVelocities(stat database.GetAllSnapshotStatsRow) (float64, float64) {
+	downloadChange24h := stat.DownloadChange24h
+	thumbsChange24h := int64(stat.ThumbsChange24h)
+	downloadChange7d := stat.DownloadChange7d
+	thumbsChange7d := int64(stat.ThumbsChange7d)
+	snapshotCount24h := stat.SnapshotCount24h
+
+	velocity24h := float64(downloadChange24h) / 24.0
+	velocity7d := float64(downloadChange7d) / 168.0
+	thumbsVel24h := float64(thumbsChange24h) / 24.0
+	thumbsVel7d := float64(thumbsChange7d) / 168.0
+
+	_, downloadVelocity := CalculateVelocity(velocity24h, velocity7d, int(snapshotCount24h), downloadChange24h)
+	_, thumbsVelocity := CalculateVelocity(thumbsVel24h, thumbsVel7d, int(snapshotCount24h), thumbsChange24h)
+
+	return downloadVelocity, thumbsVelocity
+}
+
+func (c *Calculator) calculateGrowthPercentages(stat database.GetAllSnapshotStatsRow) (float64, float64) {
+	downloadChange7d := stat.DownloadChange7d
+	thumbsChange7d := int64(stat.ThumbsChange7d)
+	minDownloads := stat.MinDownloads7d
+
+	var downloadGrowthPct, thumbsGrowthPct float64
+	if minDownloads > 0 {
+		downloadGrowthPct = (float64(downloadChange7d) / float64(minDownloads)) * 100
+	}
+
+	var thumbsBase int32
+	if stat.ThumbsUpCount.Valid {
+		thumbsBase = stat.ThumbsUpCount.Int32 - int32(thumbsChange7d) //nolint:gosec // thumbsChange7d from DB is safe
+	}
+	if thumbsBase > 0 {
+		thumbsGrowthPct = (float64(thumbsChange7d) / float64(thumbsBase)) * 100
+	}
+
+	return downloadGrowthPct, thumbsGrowthPct
+}
+
+func (c *Calculator) calculateHotAge(downloads, weightedVelocity float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var hotAgeHours float64
 	var firstHotAt pgtype.Timestamptz
 	if downloads >= 500 && weightedVelocity > 0 {
@@ -163,7 +186,10 @@ func (c *Calculator) calculateAndUpsert(
 			firstHotAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		}
 	}
+	return hotAgeHours, firstHotAt
+}
 
+func (c *Calculator) calculateRisingAge(downloads, weightedGrowthPct float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var risingAgeHours float64
 	var firstRisingAt pgtype.Timestamptz
 	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
@@ -174,26 +200,35 @@ func (c *Calculator) calculateAndUpsert(
 			firstRisingAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 		}
 	}
+	return risingAgeHours, firstRisingAt
+}
 
-	// Final scores
-	var hotScore, risingScore float64
+func (c *Calculator) calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours float64) float64 {
 	if downloads >= 500 && weightedVelocity > 0 {
-		hotScore = CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+		return CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
 	}
-	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
-		risingScore = CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
-	}
+	return 0
+}
 
-	// Upsert
+func (c *Calculator) calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours float64) float64 {
+	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
+		return CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+	}
+	return 0
+}
+
+func (c *Calculator) upsertScore(ctx context.Context, addonID int32, hotScore, risingScore, downloadVelocity, thumbsVelocity,
+	downloadGrowthPct, thumbsGrowthPct, sizeMultiplier, maintenanceMultiplier float64,
+	firstHotAt, firstRisingAt pgtype.Timestamptz) error {
+
 	toNumeric := func(v float64) pgtype.Numeric {
 		var n pgtype.Numeric
-		// pgtype.Numeric.Scan cannot scan float64 directly, must use string
-		n.Scan(fmt.Sprintf("%f", v))
+		n.Scan(fmt.Sprintf("%f", v)) //nolint:errcheck // Scan from formatted string is safe
 		return n
 	}
 
 	return c.db.UpsertTrendingScore(ctx, database.UpsertTrendingScoreParams{
-		AddonID:               stat.AddonID,
+		AddonID:               addonID,
 		HotScore:              toNumeric(hotScore),
 		RisingScore:           toNumeric(risingScore),
 		DownloadVelocity:      toNumeric(downloadVelocity),

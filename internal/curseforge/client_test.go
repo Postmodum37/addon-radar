@@ -43,7 +43,7 @@ func TestSearchMods(t *testing.T) {
 			assert.Equal(t, "50", r.URL.Query().Get("pageSize"))
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
+			json.NewEncoder(w).Encode(response) //nolint:errcheck // Test mock encode
 		}))
 		defer server.Close()
 
@@ -64,7 +64,7 @@ func TestSearchMods(t *testing.T) {
 	t.Run("invalid json", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{invalid json}`))
+			w.Write([]byte(`{invalid json}`)) //nolint:errcheck // Test mock write
 		}))
 		defer server.Close()
 
@@ -88,7 +88,7 @@ func TestSearchMods(t *testing.T) {
 				Data:       []Mod{},
 				Pagination: Pagination{TotalCount: 0},
 			}
-			json.NewEncoder(w).Encode(response)
+			json.NewEncoder(w).Encode(response) //nolint:errcheck // Test mock encode
 		}))
 		defer server.Close()
 
@@ -119,7 +119,7 @@ func TestGetCategories(t *testing.T) {
 			assert.Equal(t, "1", r.URL.Query().Get("gameId"))
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
+			json.NewEncoder(w).Encode(response) //nolint:errcheck // Test mock encode
 		}))
 		defer server.Close()
 
@@ -138,7 +138,7 @@ func TestGetCategories(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			attempts++
 			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(`{"error": "forbidden"}`))
+			w.Write([]byte(`{"error": "forbidden"}`)) //nolint:errcheck // Test mock write
 		}))
 		defer server.Close()
 
@@ -172,7 +172,7 @@ func TestDoRequest_RetryBehavior(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"data":[]}`))
+			w.Write([]byte(`{"data":[]}`)) //nolint:errcheck // Test mock write
 		}))
 		defer server.Close()
 
@@ -191,7 +191,7 @@ func TestDoRequest_RetryBehavior(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			attempts++
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"bad request"}`))
+			w.Write([]byte(`{"error":"bad request"}`)) //nolint:errcheck // Test mock write
 		}))
 		defer server.Close()
 
@@ -213,7 +213,7 @@ func TestDoRequest_RetryBehavior(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"data":[]}`))
+			w.Write([]byte(`{"data":[]}`)) //nolint:errcheck // Test mock write
 		}))
 		defer server.Close()
 

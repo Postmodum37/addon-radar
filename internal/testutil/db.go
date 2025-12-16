@@ -59,6 +59,7 @@ func SetupTestDB(t *testing.T) *TestDB {
 
 	var schema []byte
 	for _, path := range schemaPaths {
+		// #nosec G304 -- This is test code reading from known, hardcoded paths only
 		schema, err = os.ReadFile(path)
 		if err == nil {
 			break

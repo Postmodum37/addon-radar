@@ -103,6 +103,46 @@ Calculates "Hot Right Now" and "Rising Stars" scores using multi-signal blend (d
 | `PORT` | Server port (default: 8080) |
 | `ENV` | Environment (development/production) |
 
+## Development Setup
+
+### Prerequisites
+- Go 1.25+
+- golangci-lint v2.7.2+
+- Lefthook v2.0.12+
+
+### Install Development Tools
+
+```bash
+# Install golangci-lint
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.7.2
+
+# Install Lefthook (macOS)
+brew install lefthook
+
+# Install git hooks
+lefthook install
+```
+
+### Git Hooks (via Lefthook)
+
+| Hook | Commands | Description |
+|------|----------|-------------|
+| pre-commit | lint, fmt | Run golangci-lint and gofmt on staged Go files |
+| pre-push | test, lint-all | Run full test suite and lint check |
+
+### Manual Commands
+
+```bash
+# Run linter
+golangci-lint run ./...
+
+# Run tests
+go test ./... -race -timeout=5m
+
+# Format code
+gofmt -l -w .
+```
+
 ## Design Documents
 
 | Document | Status |
