@@ -6,7 +6,7 @@
 
 **Architecture:** Lefthook (fast Git hooks manager) will run golangci-lint (Go linter aggregator) and gofmt before every commit. CI will also run golangci-lint to catch issues in PRs.
 
-**Tech Stack:** golangci-lint v2.5.0, Lefthook v1.11+, GitHub Actions
+**Tech Stack:** golangci-lint v2.7.2, Lefthook v2.0.12, GitHub Actions
 
 ---
 
@@ -45,13 +45,13 @@ Default `standard` set plus:
 **Step 1: Install golangci-lint binary**
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.7.2
 ```
 
 **Step 2: Verify installation**
 
 Run: `golangci-lint --version`
-Expected: `golangci-lint has version v2.5.0 built with go1.23.x`
+Expected: `golangci-lint has version v2.7.2 built with go1.25.x`
 
 **Step 3: Commit**
 
@@ -191,7 +191,7 @@ go install github.com/evilmartians/lefthook@latest
 **Step 2: Verify installation**
 
 Run: `lefthook version`
-Expected: `1.11.x` or higher
+Expected: `2.0.12` or higher
 
 **Step 3: No commit needed**
 
@@ -295,7 +295,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.5.0
+          version: v2.7.2
           args: --timeout=5m
 ```
 
@@ -330,14 +330,14 @@ Add to CLAUDE.md after "Environment Variables" section:
 
 ### Prerequisites
 - Go 1.25+
-- golangci-lint v2.5.0+
-- Lefthook v1.11+
+- golangci-lint v2.7.2+
+- Lefthook v2.0.12+
 
 ### Install Development Tools
 
 ```bash
 # Install golangci-lint
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.7.2
 
 # Install Lefthook (macOS)
 brew install lefthook

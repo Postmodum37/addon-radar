@@ -55,6 +55,15 @@
 - [x] Add comprehensive testing infrastructure (testutil package)
 - [x] Add sync duration warning (>55 min)
 
+### Development Hooks (Dec 2025)
+- [x] Install golangci-lint v2.7.2
+- [x] Create golangci-lint configuration (.golangci.yml)
+- [x] Fix existing lint issues
+- [x] Install Lefthook v2.0.12
+- [x] Create Lefthook configuration (lefthook.yml)
+- [x] Add GitHub Actions lint workflow
+- [x] Update documentation (CLAUDE.md)
+
 ## Next Steps
 
 ### Priority 1: Frontend Development
