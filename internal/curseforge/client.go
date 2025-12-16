@@ -3,6 +3,7 @@ package curseforge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,9 +15,10 @@ import (
 
 // Client is a CurseForge API client
 type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	baseURL    string
+	apiKey            string
+	httpClient        *http.Client
+	baseURL           string
+	backoffMultiplier time.Duration // For testing: set to 0 to disable backoff
 }
 
 // NewClient creates a new CurseForge API client
@@ -24,14 +26,96 @@ func NewClient(apiKey string) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second,
 		},
-		baseURL: BaseURL,
+		baseURL:           BaseURL,
+		backoffMultiplier: time.Second, // 1 second multiplier (2s, 4s, 8s backoff)
 	}
 }
 
-// doRequest performs an HTTP request with authentication
+// HTTPError represents an HTTP error response
+type HTTPError struct {
+	StatusCode int
+	Body       string
+	Path       string
+	Method     string
+	RetryAfter time.Duration // Parsed from Retry-After header for 429 responses
+}
+
+func (e *HTTPError) Error() string {
+	// Truncate body to prevent sensitive data leakage in logs
+	body := e.Body
+	if len(body) > 200 {
+		body = body[:200] + "...(truncated)"
+	}
+	return fmt.Sprintf("HTTP %d %s %s: %s", e.StatusCode, e.Method, e.Path, body)
+}
+
+// isClientError returns true for 4xx errors except 429 (rate limit)
+func isClientError(err error) bool {
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 429
+	}
+	return false
+}
+
+// doRequest performs an HTTP request with authentication and retry logic
 func (c *Client) doRequest(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
+	const maxRetries = 3
+
+	// Warn if context deadline may be too short for retries
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < 90*time.Second {
+			slog.Warn("context deadline may be too short for retries",
+				"remaining", remaining,
+				"path", path,
+			)
+		}
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Use Retry-After if available (for 429), otherwise exponential backoff
+			backoff := time.Duration(1<<uint(attempt)) * c.backoffMultiplier
+			if httpErr, ok := lastErr.(*HTTPError); ok && httpErr.RetryAfter > 0 {
+				backoff = httpErr.RetryAfter
+			}
+
+			slog.Warn("retrying request",
+				"method", method,
+				"path", path,
+				"attempt", attempt,
+				"backoff", backoff,
+				"error", lastErr,
+			)
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		body, err := c.doRequestOnce(ctx, method, path, query)
+		if err == nil {
+			return body, nil
+		}
+
+		lastErr = err
+
+		// Don't retry client errors (4xx) except rate limits (429)
+		if isClientError(err) {
+			return nil, err
+		}
+	}
+
+	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// doRequestOnce performs a single HTTP request with authentication
+func (c *Client) doRequestOnce(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
 	reqURL := c.baseURL + path
 	if len(query) > 0 {
 		reqURL += "?" + query.Encode()
@@ -51,13 +135,31 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Limit response body to 10MB to prevent memory exhaustion
+	const maxResponseSize = 10 * 1024 * 1024
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+		httpErr := &HTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+			Path:       path,
+			Method:     method,
+		}
+
+		// Parse Retry-After header for 429 responses
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if seconds, err := strconv.Atoi(retryAfter); err == nil {
+					httpErr.RetryAfter = time.Duration(seconds) * time.Second
+				}
+			}
+		}
+
+		return nil, httpErr
 	}
 
 	return body, nil
@@ -103,6 +205,8 @@ func (c *Client) SearchMods(ctx context.Context, params SearchModsParams) (*Sear
 func (c *Client) GetAllAddonsForVersion(ctx context.Context, gameVersionTypeID int) ([]Mod, error) {
 	seen := make(map[int]bool)
 	var allMods []Mod
+	var consecutiveFailures int
+	const maxConsecutiveFailures = 10 // Circuit breaker threshold
 
 	// Use multiple sort orders to get different subsets of addons
 	sortOrders := []struct {
@@ -119,8 +223,13 @@ func (c *Client) GetAllAddonsForVersion(ctx context.Context, gameVersionTypeID i
 
 		mods, err := c.fetchWithSort(ctx, gameVersionTypeID, sort.field)
 		if err != nil {
+			consecutiveFailures++
+			if consecutiveFailures >= maxConsecutiveFailures {
+				return nil, fmt.Errorf("circuit breaker: %d consecutive failures, last error: %w", consecutiveFailures, err)
+			}
 			return nil, fmt.Errorf("fetch by %s: %w", sort.name, err)
 		}
+		consecutiveFailures = 0 // Reset on success
 
 		// Deduplicate
 		newCount := 0

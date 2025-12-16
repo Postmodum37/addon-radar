@@ -83,7 +83,7 @@ func TestRunFullSync(t *testing.T) {
 			},
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestRunFullSync(t *testing.T) {
 			categories: []curseforge.Category{},
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestRunFullSync(t *testing.T) {
 			addonsErr: errors.New("API connection failed"),
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		require.Error(t, err)
@@ -159,7 +159,7 @@ func TestRunFullSync(t *testing.T) {
 			categoriesErr: errors.New("categories API failed"),
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 		err := service.RunFullSync(ctx)
 
 		// Should not return error - category sync failure is non-critical
@@ -182,7 +182,7 @@ func TestRunFullSync(t *testing.T) {
 			categories: []curseforge.Category{},
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		// First sync
 		err := service.RunFullSync(ctx)
@@ -229,7 +229,7 @@ func TestSyncCategories(t *testing.T) {
 			},
 		}
 
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 		err := service.syncCategories(ctx)
 
 		require.NoError(t, err)
@@ -265,7 +265,7 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
@@ -315,7 +315,7 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
@@ -339,7 +339,7 @@ func TestUpsertAddon(t *testing.T) {
 		}
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)
@@ -359,7 +359,7 @@ func TestCreateSnapshot(t *testing.T) {
 		mod := createTestMod(1, "snapshot-test", "Snapshot Test")
 
 		mockClient := &mockCurseForgeClient{}
-		service := NewServiceWithClient(tdb.Queries, mockClient)
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		err := service.upsertAddon(ctx, mod)
 		require.NoError(t, err)

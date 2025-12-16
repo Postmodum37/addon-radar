@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newTestClient creates a client with no backoff delay for fast tests
+func newTestClient(apiKey string) *Client {
+	c := NewClient(apiKey)
+	c.backoffMultiplier = 0 // No delay between retries in tests
+	return c
+}
+
 func TestSearchMods(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		response := SearchModsResponse{
@@ -40,7 +47,7 @@ func TestSearchMods(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient("fake-key")
+		client := newTestClient("fake-key")
 		client.baseURL = server.URL
 
 		result, err := client.SearchMods(context.Background(), SearchModsParams{
@@ -54,44 +61,6 @@ func TestSearchMods(t *testing.T) {
 		assert.Equal(t, 2, result.Pagination.TotalCount)
 	})
 
-	t.Run("error status", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error": "internal server error"}`))
-		}))
-		defer server.Close()
-
-		client := NewClient("fake-key")
-		client.baseURL = server.URL
-
-		_, err := client.SearchMods(context.Background(), SearchModsParams{
-			GameID:   GameIDWoW,
-			PageSize: 50,
-		})
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected status 500")
-	})
-
-	t.Run("rate limit", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"error": "rate limit exceeded"}`))
-		}))
-		defer server.Close()
-
-		client := NewClient("fake-key")
-		client.baseURL = server.URL
-
-		_, err := client.SearchMods(context.Background(), SearchModsParams{
-			GameID:   GameIDWoW,
-			PageSize: 50,
-		})
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected status 429")
-	})
-
 	t.Run("invalid json", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -99,7 +68,7 @@ func TestSearchMods(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient("fake-key")
+		client := newTestClient("fake-key")
 		client.baseURL = server.URL
 
 		_, err := client.SearchMods(context.Background(), SearchModsParams{
@@ -123,7 +92,7 @@ func TestSearchMods(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient("fake-key")
+		client := newTestClient("fake-key")
 		client.baseURL = server.URL
 
 		_, err := client.SearchMods(context.Background(), SearchModsParams{
@@ -154,7 +123,7 @@ func TestGetCategories(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient("fake-key")
+		client := newTestClient("fake-key")
 		client.baseURL = server.URL
 
 		categories, err := client.GetCategories(context.Background(), GameIDWoW)
@@ -164,20 +133,23 @@ func TestGetCategories(t *testing.T) {
 		assert.Equal(t, "Bags & Inventory", categories[0].Name)
 	})
 
-	t.Run("error", func(t *testing.T) {
+	t.Run("client error no retry", func(t *testing.T) {
+		attempts := 0
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
 			w.WriteHeader(http.StatusForbidden)
 			w.Write([]byte(`{"error": "forbidden"}`))
 		}))
 		defer server.Close()
 
-		client := NewClient("fake-key")
+		client := newTestClient("fake-key")
 		client.baseURL = server.URL
 
 		_, err := client.GetCategories(context.Background(), GameIDWoW)
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected status 403")
+		assert.Contains(t, err.Error(), "HTTP 403 GET")
+		assert.Equal(t, 1, attempts) // Should not retry on 403
 	})
 }
 
@@ -188,4 +160,147 @@ func TestNewClient(t *testing.T) {
 	assert.Equal(t, "test-api-key", client.apiKey)
 	assert.Equal(t, BaseURL, client.baseURL)
 	assert.NotNil(t, client.httpClient)
+}
+
+func TestDoRequest_RetryBehavior(t *testing.T) {
+	t.Run("retries on server error and eventually succeeds", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			if attempts < 3 {
+				w.WriteHeader(http.StatusGatewayTimeout)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data":[]}`))
+		}))
+		defer server.Close()
+
+		client := newTestClient("test-key")
+		client.baseURL = server.URL
+
+		body, err := client.doRequest(context.Background(), "GET", "/test", nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, attempts)
+		assert.Contains(t, string(body), "data")
+	})
+
+	t.Run("no retry on client error", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"bad request"}`))
+		}))
+		defer server.Close()
+
+		client := newTestClient("test-key")
+		client.baseURL = server.URL
+
+		_, err := client.doRequest(context.Background(), "GET", "/test", nil)
+
+		require.Error(t, err)
+		assert.Equal(t, 1, attempts) // No retries for 4xx errors
+	})
+
+	t.Run("retries on 429 rate limit", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			if attempts < 2 {
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data":[]}`))
+		}))
+		defer server.Close()
+
+		client := newTestClient("test-key")
+		client.baseURL = server.URL
+
+		body, err := client.doRequest(context.Background(), "GET", "/test", nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, 2, attempts) // 429 should retry
+		assert.Contains(t, string(body), "data")
+	})
+
+	t.Run("gives up after max retries", func(t *testing.T) {
+		attempts := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := newTestClient("test-key")
+		client.baseURL = server.URL
+
+		_, err := client.doRequest(context.Background(), "GET", "/test", nil)
+
+		require.Error(t, err)
+		assert.Equal(t, 4, attempts) // 1 initial + 3 retries
+		assert.Contains(t, err.Error(), "failed after 3 retries")
+	})
+
+	t.Run("respects context cancellation", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer server.Close()
+
+		client := newTestClient("test-key")
+		client.baseURL = server.URL
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		_, err := client.doRequest(ctx, "GET", "/test", nil)
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+}
+
+func TestHTTPError(t *testing.T) {
+	t.Run("basic error", func(t *testing.T) {
+		err := &HTTPError{StatusCode: 404, Body: "not found", Method: "GET", Path: "/test"}
+		assert.Equal(t, "HTTP 404 GET /test: not found", err.Error())
+	})
+
+	t.Run("truncates long body", func(t *testing.T) {
+		longBody := make([]byte, 300)
+		for i := range longBody {
+			longBody[i] = 'x'
+		}
+		err := &HTTPError{StatusCode: 500, Body: string(longBody), Method: "POST", Path: "/api"}
+		errMsg := err.Error()
+		assert.Contains(t, errMsg, "...(truncated)")
+		assert.Less(t, len(errMsg), 300) // Should be truncated
+	})
+}
+
+func TestIsClientError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"400 is client error", &HTTPError{StatusCode: 400}, true},
+		{"401 is client error", &HTTPError{StatusCode: 401}, true},
+		{"403 is client error", &HTTPError{StatusCode: 403}, true},
+		{"404 is client error", &HTTPError{StatusCode: 404}, true},
+		{"429 is NOT client error (rate limit)", &HTTPError{StatusCode: 429}, false},
+		{"500 is NOT client error", &HTTPError{StatusCode: 500}, false},
+		{"502 is NOT client error", &HTTPError{StatusCode: 502}, false},
+		{"nil error is NOT client error", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isClientError(tt.err))
+		})
+	}
 }

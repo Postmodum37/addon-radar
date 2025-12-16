@@ -21,6 +21,7 @@ type CurseForgeClient interface {
 
 // Service handles the sync process
 type Service struct {
+	pool   *pgxpool.Pool
 	db     *database.Queries
 	client CurseForgeClient
 }
@@ -28,14 +29,16 @@ type Service struct {
 // NewService creates a new sync service
 func NewService(pool *pgxpool.Pool, apiKey string) *Service {
 	return &Service{
+		pool:   pool,
 		db:     database.New(pool),
 		client: curseforge.NewClient(apiKey),
 	}
 }
 
 // NewServiceWithClient creates a sync service with a custom client (for testing)
-func NewServiceWithClient(db *database.Queries, client CurseForgeClient) *Service {
+func NewServiceWithClient(pool *pgxpool.Pool, db *database.Queries, client CurseForgeClient) *Service {
 	return &Service{
+		pool:   pool,
 		db:     db,
 		client: client,
 	}
@@ -60,31 +63,64 @@ func (s *Service) RunFullSync(ctx context.Context) error {
 		// Continue anyway, categories are not critical
 	}
 
-	// Upsert each addon and create snapshot
+	// Upsert each addon and create snapshot atomically
 	var successCount, errorCount int
 	for _, mod := range mods {
-		if err := s.upsertAddon(ctx, mod); err != nil {
-			slog.Error("failed to upsert addon", "id", mod.ID, "name", mod.Name, "error", err)
+		if err := s.syncAddon(ctx, mod); err != nil {
+			slog.Error("failed to sync addon", "id", mod.ID, "name", mod.Name, "error", err)
 			errorCount++
 			continue
 		}
-
-		if err := s.createSnapshot(ctx, mod); err != nil {
-			slog.Error("failed to create snapshot", "id", mod.ID, "error", err)
-			errorCount++
-			continue
-		}
-
 		successCount++
 	}
 
 	duration := time.Since(startTime)
+
+	// Warn if sync is approaching or exceeding hourly window
+	if duration > 55*time.Minute {
+		slog.Warn("sync duration approaching hourly limit",
+			"duration", duration,
+			"limit", "60m",
+		)
+	}
+
 	slog.Info("full sync complete",
 		"duration", duration,
 		"total", len(mods),
 		"success", successCount,
 		"errors", errorCount,
 	)
+
+	// Fail if error rate exceeds 1%
+	if errorCount > 0 && float64(errorCount)/float64(len(mods)) > 0.01 {
+		return fmt.Errorf("sync had too many errors: %d/%d (%.1f%%)",
+			errorCount, len(mods), float64(errorCount)/float64(len(mods))*100)
+	}
+
+	return nil
+}
+
+// syncAddon upserts an addon and creates a snapshot atomically
+func (s *Service) syncAddon(ctx context.Context, mod curseforge.Mod) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.db.WithTx(tx)
+
+	if err := s.upsertAddonWithTx(ctx, qtx, mod); err != nil {
+		return fmt.Errorf("upsert addon: %w", err)
+	}
+
+	if err := s.createSnapshotWithTx(ctx, qtx, mod); err != nil {
+		return fmt.Errorf("create snapshot: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
 
 	return nil
 }
@@ -141,8 +177,8 @@ func (s *Service) syncCategories(ctx context.Context) error {
 	return nil
 }
 
-// upsertAddon inserts or updates an addon
-func (s *Service) upsertAddon(ctx context.Context, mod curseforge.Mod) error {
+// upsertAddonWithTx inserts or updates an addon within a transaction
+func (s *Service) upsertAddonWithTx(ctx context.Context, qtx *database.Queries, mod curseforge.Mod) error {
 	// Extract primary author
 	var authorName pgtype.Text
 	var authorID pgtype.Int4
@@ -203,7 +239,7 @@ func (s *Service) upsertAddon(ctx context.Context, mod curseforge.Mod) error {
 		}
 	}
 
-	return s.db.UpsertAddon(ctx, database.UpsertAddonParams{
+	return qtx.UpsertAddon(ctx, database.UpsertAddonParams{
 		ID:                int32(mod.ID),
 		Name:              mod.Name,
 		Slug:              mod.Slug,
@@ -224,8 +260,8 @@ func (s *Service) upsertAddon(ctx context.Context, mod curseforge.Mod) error {
 	})
 }
 
-// createSnapshot creates a point-in-time snapshot of addon metrics
-func (s *Service) createSnapshot(ctx context.Context, mod curseforge.Mod) error {
+// createSnapshotWithTx creates a point-in-time snapshot within a transaction
+func (s *Service) createSnapshotWithTx(ctx context.Context, qtx *database.Queries, mod curseforge.Mod) error {
 	var latestFileDate pgtype.Timestamptz
 	if len(mod.LatestFiles) > 0 {
 		latestFileDate = pgtype.Timestamptz{Time: mod.LatestFiles[0].FileDate, Valid: true}
@@ -241,7 +277,7 @@ func (s *Service) createSnapshot(ctx context.Context, mod curseforge.Mod) error 
 	thumbsUpCount := pgtype.Int4{Int32: int32(mod.ThumbsUpCount), Valid: true}
 	popularityRank := pgtype.Int4{Int32: int32(mod.PopularityRank), Valid: true}
 
-	return s.db.CreateSnapshot(ctx, database.CreateSnapshotParams{
+	return qtx.CreateSnapshot(ctx, database.CreateSnapshotParams{
 		AddonID:        int32(mod.ID),
 		DownloadCount:  mod.DownloadCount,
 		ThumbsUpCount:  thumbsUpCount,
@@ -249,6 +285,16 @@ func (s *Service) createSnapshot(ctx context.Context, mod curseforge.Mod) error 
 		Rating:         rating,
 		LatestFileDate: latestFileDate,
 	})
+}
+
+// upsertAddon is a convenience wrapper for testing (uses transaction internally)
+func (s *Service) upsertAddon(ctx context.Context, mod curseforge.Mod) error {
+	return s.upsertAddonWithTx(ctx, s.db, mod)
+}
+
+// createSnapshot is a convenience wrapper for testing (uses transaction internally)
+func (s *Service) createSnapshot(ctx context.Context, mod curseforge.Mod) error {
+	return s.createSnapshotWithTx(ctx, s.db, mod)
 }
 
 // extractGameVersions gets unique game versions from mod files
