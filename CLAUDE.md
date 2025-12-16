@@ -9,6 +9,8 @@
   - `PLAN.md` - Project roadmap and status
   - `TODO.md` - Task tracking
 - Focus on the unique trendiness algorithm as the main differentiator
+- Create plans and design docs in docs/plans/
+- Always develop new features in feature branches
 
 ## Project Overview
 

@@ -3,6 +3,7 @@ package curseforge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,9 +15,10 @@ import (
 
 // Client is a CurseForge API client
 type Client struct {
-	apiKey     string
-	httpClient *http.Client
-	baseURL    string
+	apiKey          string
+	httpClient      *http.Client
+	baseURL         string
+	backoffMultiply time.Duration // For testing: set to 0 to disable backoff
 }
 
 // NewClient creates a new CurseForge API client
@@ -24,14 +26,74 @@ func NewClient(apiKey string) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 60 * time.Second,
 		},
-		baseURL: BaseURL,
+		baseURL:         BaseURL,
+		backoffMultiply: time.Second, // 1 second multiplier (2s, 4s, 8s backoff)
 	}
 }
 
-// doRequest performs an HTTP request with authentication
+// HTTPError represents an HTTP error response
+type HTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
+}
+
+// isClientError returns true for 4xx errors except 429 (rate limit)
+func isClientError(err error) bool {
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode >= 400 && httpErr.StatusCode < 500 && httpErr.StatusCode != 429
+	}
+	return false
+}
+
+// doRequest performs an HTTP request with authentication and retry logic
 func (c *Client) doRequest(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
+	const maxRetries = 3
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 2s, 4s, 8s (or instant if backoffMultiply is 0)
+			backoff := time.Duration(1<<uint(attempt)) * c.backoffMultiply
+			slog.Warn("retrying request",
+				"attempt", attempt,
+				"maxRetries", maxRetries,
+				"backoff", backoff,
+				"path", path,
+				"error", lastErr,
+			)
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		body, err := c.doRequestOnce(ctx, method, path, query)
+		if err == nil {
+			return body, nil
+		}
+
+		lastErr = err
+
+		// Don't retry client errors (4xx) except rate limits (429)
+		if isClientError(err) {
+			return nil, err
+		}
+	}
+
+	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// doRequestOnce performs a single HTTP request with authentication
+func (c *Client) doRequestOnce(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
 	reqURL := c.baseURL + path
 	if len(query) > 0 {
 		reqURL += "?" + query.Encode()
@@ -57,7 +119,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, query url.V
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
 	}
 
 	return body, nil
