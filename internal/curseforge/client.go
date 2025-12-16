@@ -37,10 +37,17 @@ func NewClient(apiKey string) *Client {
 type HTTPError struct {
 	StatusCode int
 	Body       string
+	Path       string
+	Method     string
 }
 
 func (e *HTTPError) Error() string {
-	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Body)
+	// Truncate body to prevent sensitive data leakage in logs
+	body := e.Body
+	if len(body) > 200 {
+		body = body[:200] + "...(truncated)"
+	}
+	return fmt.Sprintf("HTTP %d %s %s: %s", e.StatusCode, e.Method, e.Path, body)
 }
 
 // isClientError returns true for 4xx errors except 429 (rate limit)
@@ -56,16 +63,25 @@ func isClientError(err error) bool {
 func (c *Client) doRequest(ctx context.Context, method, path string, query url.Values) ([]byte, error) {
 	const maxRetries = 3
 
+	// Warn if context deadline may be too short for retries
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < 90*time.Second {
+			slog.Warn("context deadline may be too short for retries",
+				"remaining", remaining,
+				"path", path,
+			)
+		}
+	}
+
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			// Exponential backoff: 2s, 4s, 8s (or instant if backoffMultiply is 0)
 			backoff := time.Duration(1<<uint(attempt)) * c.backoffMultiply
 			slog.Warn("retrying request",
-				"attempt", attempt,
-				"maxRetries", maxRetries,
-				"backoff", backoff,
+				"method", method,
 				"path", path,
+				"attempt", attempt,
 				"error", lastErr,
 			)
 
@@ -113,13 +129,20 @@ func (c *Client) doRequestOnce(ctx context.Context, method, path string, query u
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Limit response body to 10MB to prevent memory exhaustion
+	const maxResponseSize = 10 * 1024 * 1024
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: string(body)}
+		return nil, &HTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       string(body),
+			Path:       path,
+			Method:     method,
+		}
 	}
 
 	return body, nil

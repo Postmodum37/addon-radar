@@ -148,7 +148,7 @@ func TestGetCategories(t *testing.T) {
 		_, err := client.GetCategories(context.Background(), GameIDWoW)
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "HTTP 403:")
+		assert.Contains(t, err.Error(), "HTTP 403 GET")
 		assert.Equal(t, 1, attempts) // Should not retry on 403
 	})
 }
@@ -265,8 +265,21 @@ func TestDoRequest_RetryBehavior(t *testing.T) {
 }
 
 func TestHTTPError(t *testing.T) {
-	err := &HTTPError{StatusCode: 404, Body: "not found"}
-	assert.Equal(t, "HTTP 404: not found", err.Error())
+	t.Run("basic error", func(t *testing.T) {
+		err := &HTTPError{StatusCode: 404, Body: "not found", Method: "GET", Path: "/test"}
+		assert.Equal(t, "HTTP 404 GET /test: not found", err.Error())
+	})
+
+	t.Run("truncates long body", func(t *testing.T) {
+		longBody := make([]byte, 300)
+		for i := range longBody {
+			longBody[i] = 'x'
+		}
+		err := &HTTPError{StatusCode: 500, Body: string(longBody), Method: "POST", Path: "/api"}
+		errMsg := err.Error()
+		assert.Contains(t, errMsg, "...(truncated)")
+		assert.Less(t, len(errMsg), 300) // Should be truncated
+	})
 }
 
 func TestIsClientError(t *testing.T) {
