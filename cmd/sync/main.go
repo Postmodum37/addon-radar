@@ -57,7 +57,8 @@ func main() {
 
 	// Run sync
 	syncService := sync.NewService(pool, cfg.CurseForgeAPIKey)
-	if err := syncService.RunFullSync(ctx); err != nil {
+	syncedIDs, err := syncService.RunFullSync(ctx)
+	if err != nil {
 		slog.Error("sync failed", "error", err)
 		os.Exit(1)
 	}
@@ -66,9 +67,26 @@ func main() {
 
 	// Run trending calculation
 	slog.Info("starting trending calculation")
-	calculator := trending.NewCalculator(database.New(pool))
+	queries := database.New(pool)
+	calculator := trending.NewCalculator(queries)
 	if err := calculator.CalculateAll(ctx); err != nil {
 		slog.Error("trending calculation failed", "error", err)
 		// Don't exit - sync succeeded, trending is secondary
+	}
+
+	// Cleanup: delete old snapshots (95-day retention)
+	deleted, err := queries.DeleteOldSnapshots(ctx)
+	if err != nil {
+		slog.Warn("snapshot cleanup failed", "error", err)
+	} else if deleted > 0 {
+		slog.Info("snapshots cleaned", "count", deleted)
+	}
+
+	// Cleanup: mark missing addons as inactive
+	inactive, err := queries.MarkMissingAddonsInactive(ctx, syncedIDs)
+	if err != nil {
+		slog.Warn("mark inactive failed", "error", err)
+	} else if inactive > 0 {
+		slog.Info("addons marked inactive", "count", inactive)
 	}
 }

@@ -39,15 +39,15 @@ func (m *mockCurseForgeClient) GetCategories(ctx context.Context, gameID int) ([
 // createTestMod creates a test Mod with sensible defaults
 func createTestMod(id int, slug, name string) curseforge.Mod {
 	return curseforge.Mod{
-		ID:            id,
-		Slug:          slug,
-		Name:          name,
-		Summary:       "Test summary for " + name,
-		DownloadCount: int64(1000 * id),
-		ThumbsUpCount: id * 10,
+		ID:             id,
+		Slug:           slug,
+		Name:           name,
+		Summary:        "Test summary for " + name,
+		DownloadCount:  int64(1000 * id),
+		ThumbsUpCount:  id * 10,
 		PopularityRank: id,
-		DateCreated:   time.Now().Add(-time.Hour * 24 * 30),
-		DateModified:  time.Now().Add(-time.Hour),
+		DateCreated:    time.Now().Add(-time.Hour * 24 * 30),
+		DateModified:   time.Now().Add(-time.Hour),
 		Authors: []curseforge.Author{
 			{ID: 100 + id, Name: "Author " + name},
 		},
@@ -84,9 +84,10 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
+		assert.Len(t, syncedIDs, 3)
 
 		// Verify addons were created
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
@@ -124,9 +125,10 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
+		assert.Empty(t, syncedIDs)
 
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
@@ -142,10 +144,11 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fetch addons")
+		assert.Nil(t, syncedIDs)
 	})
 
 	t.Run("continues on category sync failure", func(t *testing.T) {
@@ -160,10 +163,11 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		// Should not return error - category sync failure is non-critical
 		require.NoError(t, err)
+		assert.Len(t, syncedIDs, 1)
 
 		// Addon should still be synced
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
@@ -185,7 +189,7 @@ func TestRunFullSync(t *testing.T) {
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		// First sync
-		err := service.RunFullSync(ctx)
+		_, err := service.RunFullSync(ctx)
 		require.NoError(t, err)
 
 		// Update the mock data
@@ -193,7 +197,7 @@ func TestRunFullSync(t *testing.T) {
 		mockClient.addons[0].Name = "Addon One Updated"
 
 		// Second sync
-		err = service.RunFullSync(ctx)
+		_, err = service.RunFullSync(ctx)
 		require.NoError(t, err)
 
 		// Should still have 1 addon (upserted, not duplicated)

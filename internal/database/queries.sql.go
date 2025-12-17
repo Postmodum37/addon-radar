@@ -187,6 +187,20 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 	return err
 }
 
+const deleteOldSnapshots = `-- name: DeleteOldSnapshots :execrows
+DELETE FROM snapshots
+WHERE recorded_at < NOW() - INTERVAL '95 days'
+`
+
+// Delete snapshots older than 95 days (algorithm needs 90d, 5-day buffer)
+func (q *Queries) DeleteOldSnapshots(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldSnapshots)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAddonByID = `-- name: GetAddonByID :one
 SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons WHERE id = $1
 `
@@ -917,6 +931,23 @@ func (q *Queries) ListRisingAddons(ctx context.Context, limit int32) ([]ListRisi
 	return items, nil
 }
 
+const markMissingAddonsInactive = `-- name: MarkMissingAddonsInactive :execrows
+WITH synced_ids AS (SELECT unnest($1::integer[]) AS id)
+UPDATE addons
+SET status = 'inactive', last_synced_at = NOW()
+WHERE status = 'active'
+  AND NOT EXISTS (SELECT 1 FROM synced_ids WHERE synced_ids.id = addons.id)
+`
+
+// Mark addons as inactive if they no longer appear in CurseForge API response
+func (q *Queries) MarkMissingAddonsInactive(ctx context.Context, dollar_1 []int32) (int64, error) {
+	result, err := q.db.Exec(ctx, markMissingAddonsInactive, dollar_1)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const searchAddons = `-- name: SearchAddons :many
 SELECT id, name, slug, summary, author_name, author_id, logo_url, primary_category_id, categories, game_versions, created_at, last_updated_at, last_synced_at, is_hot, hot_until, status, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date FROM addons
 WHERE status = 'active'
@@ -998,7 +1029,8 @@ ON CONFLICT (id) DO UPDATE SET
     thumbs_up_count = EXCLUDED.thumbs_up_count,
     popularity_rank = EXCLUDED.popularity_rank,
     rating = EXCLUDED.rating,
-    latest_file_date = EXCLUDED.latest_file_date
+    latest_file_date = EXCLUDED.latest_file_date,
+    status = 'active'
 `
 
 type UpsertAddonParams struct {
