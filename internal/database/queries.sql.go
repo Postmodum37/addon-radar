@@ -116,6 +116,19 @@ func (q *Queries) CountAllRecentFileUpdates(ctx context.Context) ([]CountAllRece
 	return items, nil
 }
 
+const countOldSnapshots = `-- name: CountOldSnapshots :one
+SELECT COUNT(*) FROM snapshots
+WHERE recorded_at < NOW() - INTERVAL '95 days'
+`
+
+// Count snapshots older than 95 days (for progress logging)
+func (q *Queries) CountOldSnapshots(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countOldSnapshots)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRecentFileUpdates = `-- name: CountRecentFileUpdates :one
 SELECT COUNT(DISTINCT DATE(latest_file_date))
 FROM snapshots
@@ -187,14 +200,20 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 	return err
 }
 
-const deleteOldSnapshots = `-- name: DeleteOldSnapshots :execrows
+const deleteOldSnapshotsBatch = `-- name: DeleteOldSnapshotsBatch :execrows
 DELETE FROM snapshots
-WHERE recorded_at < NOW() - INTERVAL '95 days'
+WHERE id IN (
+    SELECT id FROM snapshots
+    WHERE recorded_at < NOW() - INTERVAL '95 days'
+    ORDER BY id
+    LIMIT $1
+)
 `
 
-// Delete snapshots older than 95 days (algorithm needs 90d, 5-day buffer)
-func (q *Queries) DeleteOldSnapshots(ctx context.Context) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteOldSnapshots)
+// Delete snapshots older than 95 days in batches to avoid long-running transactions
+// Use ORDER BY id for consistent batching (faster than ORDER BY recorded_at)
+func (q *Queries) DeleteOldSnapshotsBatch(ctx context.Context, limit int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldSnapshotsBatch, limit)
 	if err != nil {
 		return 0, err
 	}

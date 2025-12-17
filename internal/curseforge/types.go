@@ -7,21 +7,21 @@ const (
 	GameIDWoW = 1
 
 	// WoW Game Version Types
-	GameVersionTypeRetail              = 517
-	GameVersionTypeClassic             = 67408
-	GameVersionTypeWrathClassic        = 73713
-	GameVersionTypeCataClassic         = 77522
-	GameVersionTypeMoPClassic          = 79434
+	GameVersionTypeRetail       = 517
+	GameVersionTypeClassic      = 67408
+	GameVersionTypeWrathClassic = 73713
+	GameVersionTypeCataClassic  = 77522
+	GameVersionTypeMoPClassic   = 79434
 
 	// Sort fields for search
-	SortFieldFeatured    = 1
-	SortFieldPopularity  = 2
-	SortFieldLastUpdated = 3
-	SortFieldName        = 4
-	SortFieldAuthor      = 5
+	SortFieldFeatured       = 1
+	SortFieldPopularity     = 2
+	SortFieldLastUpdated    = 3
+	SortFieldName           = 4
+	SortFieldAuthor         = 5
 	SortFieldTotalDownloads = 6
-	SortFieldCategory    = 7
-	SortFieldGameVersion = 8
+	SortFieldCategory       = 7
+	SortFieldGameVersion    = 8
 
 	// API limit
 	MaxSearchResults = 10000
@@ -43,23 +43,23 @@ type Pagination struct {
 
 // Mod represents a CurseForge addon/mod
 type Mod struct {
-	ID                   int        `json:"id"`
-	GameID               int        `json:"gameId"`
-	Name                 string     `json:"name"`
-	Slug                 string     `json:"slug"`
-	Summary              string     `json:"summary"`
-	DownloadCount        int64      `json:"downloadCount"`
-	ThumbsUpCount        int        `json:"thumbsUpCount"`
-	Rating               float64    `json:"rating"`
-	PopularityRank       int        `json:"popularityRank"`
-	DateCreated          time.Time  `json:"dateCreated"`
-	DateModified         time.Time  `json:"dateModified"`
-	DateReleased         time.Time  `json:"dateReleased"`
-	Categories           []Category `json:"categories"`
-	Authors              []Author   `json:"authors"`
-	Logo                 *Logo      `json:"logo"`
-	LatestFiles          []File     `json:"latestFiles"`
-	LatestFilesIndexes   []FileIndex `json:"latestFilesIndexes"`
+	ID                 int         `json:"id"`
+	GameID             int         `json:"gameId"`
+	Name               string      `json:"name"`
+	Slug               string      `json:"slug"`
+	Summary            string      `json:"summary"`
+	DownloadCount      int64       `json:"downloadCount"`
+	ThumbsUpCount      int         `json:"thumbsUpCount"`
+	Rating             float64     `json:"rating"`
+	PopularityRank     int         `json:"popularityRank"`
+	DateCreated        time.Time   `json:"dateCreated"`
+	DateModified       time.Time   `json:"dateModified"`
+	DateReleased       time.Time   `json:"dateReleased"`
+	Categories         []Category  `json:"categories"`
+	Authors            []Author    `json:"authors"`
+	Logo               *Logo       `json:"logo"`
+	LatestFiles        []File      `json:"latestFiles"`
+	LatestFilesIndexes []FileIndex `json:"latestFilesIndexes"`
 }
 
 // Category represents an addon category
@@ -103,12 +103,12 @@ type File struct {
 
 // FileIndex for quick file lookup
 type FileIndex struct {
-	GameVersion       string    `json:"gameVersion"`
-	FileID            int       `json:"fileId"`
-	Filename          string    `json:"filename"`
-	ReleaseType       int       `json:"releaseType"`
-	GameVersionTypeID int       `json:"gameVersionTypeId"`
-	ModLoader         *int      `json:"modLoader"`
+	GameVersion       string `json:"gameVersion"`
+	FileID            int    `json:"fileId"`
+	Filename          string `json:"filename"`
+	ReleaseType       int    `json:"releaseType"`
+	GameVersionTypeID int    `json:"gameVersionTypeId"`
+	ModLoader         *int   `json:"modLoader"`
 }
 
 // GetCategoriesResponse is the response from /v1/categories

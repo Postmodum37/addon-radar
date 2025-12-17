@@ -25,8 +25,8 @@ func seedAddonWithSnapshots(t *testing.T, tdb *testutil.TestDB, id int32, slug s
 	// Insert snapshots with varying download counts to create velocity
 	for i := 0; i < snapshotCount; i++ {
 		recordedAt := time.Now().Add(-time.Duration(i) * time.Hour)
-		downloadAtSnapshot := downloads - int64(i*100)                       // Each hour 100 fewer downloads
-		thumbsAtSnapshot := thumbsUp - int32(int64(i)*2)                     //nolint:gosec // Test data with small known values
+		downloadAtSnapshot := downloads - int64(i*100)   // Each hour 100 fewer downloads
+		thumbsAtSnapshot := thumbsUp - int32(int64(i)*2) //nolint:gosec // Test data with small known values
 
 		_, err := tdb.Pool.Exec(ctx, `
 			INSERT INTO snapshots (addon_id, recorded_at, download_count, thumbs_up_count)

@@ -54,13 +54,13 @@ func TestCalculateMaintenanceMultiplier(t *testing.T) {
 
 func TestCalculateVelocity(t *testing.T) {
 	tests := []struct {
-		name           string
-		velocity24h    float64
-		velocity7d     float64
-		dataPoints24h  int
-		change24h      int64
-		wantConfident  bool
-		wantVelocity   float64
+		name          string
+		velocity24h   float64
+		velocity7d    float64
+		dataPoints24h int
+		change24h     int64
+		wantConfident bool
+		wantVelocity  float64
 	}{
 		{
 			name:          "confident 24h - enough data and change",

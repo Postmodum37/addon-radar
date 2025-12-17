@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -11,6 +12,17 @@ import (
 	"addon-radar/internal/database"
 	"addon-radar/internal/sync"
 	"addon-radar/internal/trending"
+)
+
+const (
+	// snapshotDeleteBatchSize is the number of old snapshots to delete per batch
+	// to avoid long-running transactions that lock the table.
+	snapshotDeleteBatchSize = 10000
+
+	// minSyncedAddonsThreshold is the minimum number of addons that must be synced
+	// before marking missing addons as inactive. Prevents catastrophic data loss
+	// if CurseForge API returns empty response.
+	minSyncedAddonsThreshold = 1000
 )
 
 func main() {
@@ -74,19 +86,41 @@ func main() {
 		// Don't exit - sync succeeded, trending is secondary
 	}
 
-	// Cleanup: delete old snapshots (95-day retention)
-	deleted, err := queries.DeleteOldSnapshots(ctx)
-	if err != nil {
-		slog.Warn("snapshot cleanup failed", "error", err)
-	} else if deleted > 0 {
-		slog.Info("snapshots cleaned", "count", deleted)
+	// Cleanup: delete old snapshots (95-day retention) in batches
+	// to avoid long-running transactions that lock the table
+	var totalDeleted int64
+	for {
+		deleted, err := queries.DeleteOldSnapshotsBatch(ctx, snapshotDeleteBatchSize)
+		if err != nil {
+			slog.Warn("snapshot cleanup batch failed", "error", err, "deleted_so_far", totalDeleted)
+			break
+		}
+		totalDeleted += deleted
+		if deleted == 0 {
+			break
+		}
+		if deleted == int64(snapshotDeleteBatchSize) {
+			// More batches to process, yield briefly to reduce contention
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	if totalDeleted > 0 {
+		slog.Info("snapshots cleaned", "count", totalDeleted)
 	}
 
 	// Cleanup: mark missing addons as inactive
-	inactive, err := queries.MarkMissingAddonsInactive(ctx, syncedIDs)
-	if err != nil {
-		slog.Warn("mark inactive failed", "error", err)
-	} else if inactive > 0 {
-		slog.Info("addons marked inactive", "count", inactive)
+	// Guard against empty or suspiciously small sync results to prevent catastrophic data loss
+	if len(syncedIDs) < minSyncedAddonsThreshold {
+		slog.Warn("skipping inactive marking: synced addon count below threshold",
+			"synced", len(syncedIDs),
+			"threshold", minSyncedAddonsThreshold,
+		)
+	} else {
+		inactive, err := queries.MarkMissingAddonsInactive(ctx, syncedIDs)
+		if err != nil {
+			slog.Warn("mark inactive failed", "error", err)
+		} else if inactive > 0 {
+			slog.Info("addons marked inactive", "count", inactive)
+		}
 	}
 }

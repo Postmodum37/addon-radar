@@ -267,9 +267,20 @@ WHERE recorded_at >= NOW() - INTERVAL '90 days'
   AND latest_file_date IS NOT NULL
 GROUP BY addon_id;
 
--- name: DeleteOldSnapshots :execrows
--- Delete snapshots older than 95 days (algorithm needs 90d, 5-day buffer)
+-- name: DeleteOldSnapshotsBatch :execrows
+-- Delete snapshots older than 95 days in batches to avoid long-running transactions
+-- Use ORDER BY id for consistent batching (faster than ORDER BY recorded_at)
 DELETE FROM snapshots
+WHERE id IN (
+    SELECT id FROM snapshots
+    WHERE recorded_at < NOW() - INTERVAL '95 days'
+    ORDER BY id
+    LIMIT $1
+);
+
+-- name: CountOldSnapshots :one
+-- Count snapshots older than 95 days (for progress logging)
+SELECT COUNT(*) FROM snapshots
 WHERE recorded_at < NOW() - INTERVAL '95 days';
 
 -- name: MarkMissingAddonsInactive :execrows

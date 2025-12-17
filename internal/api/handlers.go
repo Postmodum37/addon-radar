@@ -11,17 +11,17 @@ import (
 )
 
 type AddonResponse struct {
-	ID              int32    `json:"id"`
-	Name            string   `json:"name"`
-	Slug            string   `json:"slug"`
-	Summary         string   `json:"summary,omitempty"`
-	AuthorName      string   `json:"author_name,omitempty"`
-	LogoURL         string   `json:"logo_url,omitempty"`
-	DownloadCount   int64    `json:"download_count"`
-	ThumbsUpCount   int32    `json:"thumbs_up_count"`
-	PopularityRank  int32    `json:"popularity_rank,omitempty"`
-	GameVersions    []string `json:"game_versions"`
-	LastUpdatedAt   string   `json:"last_updated_at,omitempty"`
+	ID             int32    `json:"id"`
+	Name           string   `json:"name"`
+	Slug           string   `json:"slug"`
+	Summary        string   `json:"summary,omitempty"`
+	AuthorName     string   `json:"author_name,omitempty"`
+	LogoURL        string   `json:"logo_url,omitempty"`
+	DownloadCount  int64    `json:"download_count"`
+	ThumbsUpCount  int32    `json:"thumbs_up_count"`
+	PopularityRank int32    `json:"popularity_rank,omitempty"`
+	GameVersions   []string `json:"game_versions"`
+	LastUpdatedAt  string   `json:"last_updated_at,omitempty"`
 }
 
 type TrendingAddonResponse struct {
