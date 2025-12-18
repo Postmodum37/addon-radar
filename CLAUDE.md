@@ -132,6 +132,29 @@ lefthook install
 | pre-commit | lint, fmt | Run golangci-lint and gofmt on staged Go files |
 | pre-push | test, lint-all | Run full test suite and lint check |
 
+### Local Database Setup
+
+```bash
+# Create local PostgreSQL database
+createdb addon_radar
+
+# Apply schema
+psql addon_radar < sql/schema.sql
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your local DATABASE_URL and CURSEFORGE_API_KEY
+```
+
+### Regenerating Database Code
+
+After modifying `sql/schema.sql` or `sql/queries.sql`:
+
+```bash
+# Regenerate sqlc code
+sqlc generate
+```
+
 ### Manual Commands
 
 ```bash
@@ -141,8 +164,56 @@ golangci-lint run ./...
 # Run tests
 go test ./... -race -timeout=5m
 
+# Run single package tests
+go test ./internal/trending/... -v
+
 # Format code
 gofmt -l -w .
+
+# Build binaries
+go build -o bin/sync ./cmd/sync
+go build -o bin/web ./cmd/web
+
+# Run locally
+./bin/web        # API server on :8080
+./bin/sync       # One-time sync job
+```
+
+### API Examples
+
+```bash
+# Health check
+curl http://localhost:8080/api/v1/health
+
+# List addons (paginated)
+curl "http://localhost:8080/api/v1/addons?page=1&per_page=10"
+
+# Search addons
+curl "http://localhost:8080/api/v1/addons?search=details"
+
+# Get single addon
+curl http://localhost:8080/api/v1/addons/details
+
+# Get trending hot
+curl http://localhost:8080/api/v1/trending/hot
+
+# Get rising stars
+curl http://localhost:8080/api/v1/trending/rising
+
+# Production API
+curl https://addon-radar-api-production.up.railway.app/api/v1/trending/hot
+```
+
+### Railway Deployment
+
+Deployments are automatic via GitHub integration:
+
+```bash
+# Push to main triggers deployment
+git push origin main
+
+# Check deployment status in Railway dashboard
+# https://railway.app/dashboard
 ```
 
 ## Design Documents
@@ -157,6 +228,8 @@ gofmt -l -w .
 | `2025-12-10-trending-algorithm-implementation.md` | **Complete** |
 | `2025-12-11-trending-calculation-optimization.md` | Complete |
 | `2025-12-11-testing-infrastructure.md` | **Complete** |
+| `2025-12-16-fix-curseforge-api-timeout.md` | Complete |
+| `2025-12-16-dev-hooks-implementation.md` | Complete |
 
 ## Serena MCP
 
@@ -219,6 +292,94 @@ get-library-docs("/jackc/pgx", topic="connection pool")
 | pgx/v5 | `/jackc/pgx` | PostgreSQL driver, connection pooling |
 | Gin | `/gin-gonic/gin` | HTTP routing, middleware |
 | sqlc | `/sqlc-dev/sqlc` | SQL code generation |
+
+## Ref MCP
+
+Ref searches documentation from the web, GitHub, and private resources. **Prefer Ref over Context7** for finding documentation as it provides broader coverage and more up-to-date results.
+
+### When to Use Ref
+- **Finding documentation**: Search across web, GitHub, and private docs (preferred method)
+- **Reading specific docs**: Fetch and read content from documentation URLs
+- **API research**: Find official documentation for external services
+- **Library docs**: First choice before falling back to Context7
+
+### Key Ref Tools
+```
+mcp__Ref__ref_search_documentation  # Search for documentation
+mcp__Ref__ref_read_url              # Read content from a documentation URL
+```
+
+### Example Usage
+```
+# Step 1: Search for documentation
+ref_search_documentation("Go pgx PostgreSQL driver")
+
+# Step 2: Read a specific documentation URL from results
+ref_read_url("https://pkg.go.dev/github.com/jackc/pgx/v5#section-readme")
+```
+
+### Tips
+- Include programming language and framework names in search queries
+- Add `ref_src=private` to search queries to include private docs
+- Pass the exact URL (including `#hash`) from search results to `ref_read_url`
+- Use Ref first; fall back to Context7 only if Ref doesn't have the library indexed
+
+## PAL MCP
+
+PAL (Peer AI Layer) provides multi-model collaboration for complex analysis tasks. Use it to get second opinions, perform deep investigations, or leverage specialized analysis capabilities.
+
+### When to Use PAL
+- **Code review**: Get external model review of code changes
+- **Debugging**: Deep investigation with hypothesis testing
+- **Architecture decisions**: Multi-model consensus on design choices
+- **Security audits**: Comprehensive vulnerability assessment
+- **Complex analysis**: When you need deeper reasoning or validation
+
+### Key PAL Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__pal__chat` | General chat and brainstorming with external models |
+| `mcp__pal__codereview` | Systematic code review with expert validation |
+| `mcp__pal__debug` | Root cause analysis with hypothesis testing |
+| `mcp__pal__analyze` | Comprehensive code analysis (architecture, performance, security) |
+| `mcp__pal__thinkdeep` | Multi-stage investigation for complex problems |
+| `mcp__pal__consensus` | Multi-model debate for architectural decisions |
+| `mcp__pal__precommit` | Validate git changes before committing |
+| `mcp__pal__secaudit` | Security audit with OWASP Top 10 analysis |
+| `mcp__pal__testgen` | Generate comprehensive test suites |
+| `mcp__pal__refactor` | Identify refactoring opportunities |
+| `mcp__pal__listmodels` | List available models |
+
+### Example Usage
+```
+# Get available models first
+mcp__pal__listmodels()
+
+# Chat with an external model for brainstorming
+mcp__pal__chat(
+  prompt="Review this API design approach...",
+  model="google/gemini-2.5-pro",
+  working_directory_absolute_path="/Users/tomas/Workspace/addon-radar"
+)
+
+# Deep code review
+mcp__pal__codereview(
+  step="Reviewing the trending algorithm implementation",
+  step_number=1,
+  total_steps=2,
+  next_step_required=true,
+  findings="Initial analysis of algorithm...",
+  model="google/gemini-2.5-pro",
+  relevant_files=["/Users/tomas/Workspace/addon-radar/internal/trending/calculator.go"]
+)
+```
+
+### Tips
+- Use `listmodels` first to see available models when no specific model is requested
+- Pass absolute file paths to `relevant_files` for code context
+- Use `continuation_id` to maintain context across multiple tool calls
+- Set `thinking_mode` to "high" or "max" for complex analysis
 
 ## External Resources
 
