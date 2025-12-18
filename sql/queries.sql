@@ -23,7 +23,8 @@ ON CONFLICT (id) DO UPDATE SET
     thumbs_up_count = EXCLUDED.thumbs_up_count,
     popularity_rank = EXCLUDED.popularity_rank,
     rating = EXCLUDED.rating,
-    latest_file_date = EXCLUDED.latest_file_date;
+    latest_file_date = EXCLUDED.latest_file_date,
+    status = 'active';
 
 -- name: CreateSnapshot :exec
 INSERT INTO snapshots (addon_id, recorded_at, download_count, thumbs_up_count, popularity_rank, rating, latest_file_date)
@@ -265,3 +266,27 @@ FROM snapshots
 WHERE recorded_at >= NOW() - INTERVAL '90 days'
   AND latest_file_date IS NOT NULL
 GROUP BY addon_id;
+
+-- name: DeleteOldSnapshotsBatch :execrows
+-- Delete snapshots older than 95 days in batches to avoid long-running transactions
+-- Use ORDER BY id for consistent batching (faster than ORDER BY recorded_at)
+DELETE FROM snapshots
+WHERE id IN (
+    SELECT id FROM snapshots
+    WHERE recorded_at < NOW() - INTERVAL '95 days'
+    ORDER BY id
+    LIMIT $1
+);
+
+-- name: CountOldSnapshots :one
+-- Count snapshots older than 95 days (for progress logging)
+SELECT COUNT(*) FROM snapshots
+WHERE recorded_at < NOW() - INTERVAL '95 days';
+
+-- name: MarkMissingAddonsInactive :execrows
+-- Mark addons as inactive if they no longer appear in CurseForge API response
+WITH synced_ids AS (SELECT unnest($1::integer[]) AS id)
+UPDATE addons
+SET status = 'inactive', last_synced_at = NOW()
+WHERE status = 'active'
+  AND NOT EXISTS (SELECT 1 FROM synced_ids WHERE synced_ids.id = addons.id);

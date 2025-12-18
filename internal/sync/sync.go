@@ -44,15 +44,16 @@ func NewServiceWithClient(pool *pgxpool.Pool, db *database.Queries, client Curse
 	}
 }
 
-// RunFullSync performs a full sync of all WoW addons
-func (s *Service) RunFullSync(ctx context.Context) error {
+// RunFullSync performs a full sync of all WoW addons.
+// Returns the IDs of all successfully synced addons for cleanup purposes.
+func (s *Service) RunFullSync(ctx context.Context) ([]int32, error) {
 	startTime := time.Now()
 	slog.Info("starting full sync")
 
 	// Fetch all addons from CurseForge
 	mods, err := s.client.GetAllWoWAddons(ctx)
 	if err != nil {
-		return fmt.Errorf("fetch addons: %w", err)
+		return nil, fmt.Errorf("fetch addons: %w", err)
 	}
 
 	slog.Info("fetched all addons", "count", len(mods))
@@ -64,6 +65,8 @@ func (s *Service) RunFullSync(ctx context.Context) error {
 	}
 
 	// Upsert each addon and create snapshot atomically
+	// Track successfully synced IDs for stale addon detection
+	syncedIDs := make([]int32, 0, len(mods))
 	var successCount, errorCount int
 	for _, mod := range mods {
 		if err := s.syncAddon(ctx, mod); err != nil {
@@ -71,6 +74,7 @@ func (s *Service) RunFullSync(ctx context.Context) error {
 			errorCount++
 			continue
 		}
+		syncedIDs = append(syncedIDs, int32(mod.ID)) //nolint:gosec // CurseForge API IDs are always valid int32
 		successCount++
 	}
 
@@ -93,11 +97,11 @@ func (s *Service) RunFullSync(ctx context.Context) error {
 
 	// Fail if error rate exceeds 1%
 	if errorCount > 0 && float64(errorCount)/float64(len(mods)) > 0.01 {
-		return fmt.Errorf("sync had too many errors: %d/%d (%.1f%%)",
+		return syncedIDs, fmt.Errorf("sync had too many errors: %d/%d (%.1f%%)",
 			errorCount, len(mods), float64(errorCount)/float64(len(mods))*100)
 	}
 
-	return nil
+	return syncedIDs, nil
 }
 
 // syncAddon upserts an addon and creates a snapshot atomically
@@ -161,7 +165,7 @@ func (s *Service) syncCategories(ctx context.Context) error {
 			}
 
 			err := s.db.UpsertCategory(ctx, database.UpsertCategoryParams{
-				ID:       int32(cat.ID),                                          //nolint:gosec // CurseForge API IDs are always valid int32
+				ID:       int32(cat.ID), //nolint:gosec // CurseForge API IDs are always valid int32
 				Name:     cat.Name,
 				Slug:     cat.Slug,
 				ParentID: pgtype.Int4{Int32: int32(cat.ParentID), Valid: true}, //nolint:gosec // CurseForge API IDs are always valid int32

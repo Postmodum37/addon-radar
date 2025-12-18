@@ -39,15 +39,15 @@ func (m *mockCurseForgeClient) GetCategories(ctx context.Context, gameID int) ([
 // createTestMod creates a test Mod with sensible defaults
 func createTestMod(id int, slug, name string) curseforge.Mod {
 	return curseforge.Mod{
-		ID:            id,
-		Slug:          slug,
-		Name:          name,
-		Summary:       "Test summary for " + name,
-		DownloadCount: int64(1000 * id),
-		ThumbsUpCount: id * 10,
+		ID:             id,
+		Slug:           slug,
+		Name:           name,
+		Summary:        "Test summary for " + name,
+		DownloadCount:  int64(1000 * id),
+		ThumbsUpCount:  id * 10,
 		PopularityRank: id,
-		DateCreated:   time.Now().Add(-time.Hour * 24 * 30),
-		DateModified:  time.Now().Add(-time.Hour),
+		DateCreated:    time.Now().Add(-time.Hour * 24 * 30),
+		DateModified:   time.Now().Add(-time.Hour),
 		Authors: []curseforge.Author{
 			{ID: 100 + id, Name: "Author " + name},
 		},
@@ -84,9 +84,10 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
+		assert.Len(t, syncedIDs, 3)
 
 		// Verify addons were created
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
@@ -124,9 +125,10 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.NoError(t, err)
+		assert.Empty(t, syncedIDs)
 
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
 		require.NoError(t, err)
@@ -142,10 +144,11 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fetch addons")
+		assert.Nil(t, syncedIDs)
 	})
 
 	t.Run("continues on category sync failure", func(t *testing.T) {
@@ -160,10 +163,11 @@ func TestRunFullSync(t *testing.T) {
 		}
 
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
-		err := service.RunFullSync(ctx)
+		syncedIDs, err := service.RunFullSync(ctx)
 
 		// Should not return error - category sync failure is non-critical
 		require.NoError(t, err)
+		assert.Len(t, syncedIDs, 1)
 
 		// Addon should still be synced
 		addons, err := tdb.Queries.ListAddons(ctx, database.ListAddonsParams{Limit: 10, Offset: 0})
@@ -185,7 +189,7 @@ func TestRunFullSync(t *testing.T) {
 		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
 
 		// First sync
-		err := service.RunFullSync(ctx)
+		_, err := service.RunFullSync(ctx)
 		require.NoError(t, err)
 
 		// Update the mock data
@@ -193,7 +197,7 @@ func TestRunFullSync(t *testing.T) {
 		mockClient.addons[0].Name = "Addon One Updated"
 
 		// Second sync
-		err = service.RunFullSync(ctx)
+		_, err = service.RunFullSync(ctx)
 		require.NoError(t, err)
 
 		// Should still have 1 addon (upserted, not duplicated)
@@ -411,5 +415,102 @@ func TestExtractGameVersions(t *testing.T) {
 
 		versions := extractGameVersions(mod)
 		assert.Empty(t, versions)
+	})
+}
+
+func TestMarkMissingAddonsInactive(t *testing.T) {
+	t.Run("empty syncedIDs does not crash", func(t *testing.T) {
+		tdb := testutil.SetupTestDB(t)
+		ctx := context.Background()
+
+		// Create an addon first
+		mockClient := &mockCurseForgeClient{
+			addons: []curseforge.Mod{
+				createTestMod(1, "test-addon", "Test Addon"),
+			},
+		}
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
+		_, err := service.RunFullSync(ctx)
+		require.NoError(t, err)
+
+		// Verify addon is active
+		addon, err := tdb.Queries.GetAddonBySlug(ctx, "test-addon")
+		require.NoError(t, err)
+		assert.Equal(t, "active", addon.Status.String)
+
+		// Call MarkMissingAddonsInactive with empty slice
+		// This is the dangerous case - would mark ALL addons inactive without the guard
+		affected, err := tdb.Queries.MarkMissingAddonsInactive(ctx, []int32{})
+		require.NoError(t, err)
+		// With empty array, all active addons would be marked inactive
+		assert.Equal(t, int64(1), affected)
+
+		// This test documents the dangerous behavior that the guard in main.go prevents
+	})
+
+	t.Run("marks only missing addons as inactive", func(t *testing.T) {
+		tdb := testutil.SetupTestDB(t)
+		ctx := context.Background()
+
+		// Create two addons
+		mockClient := &mockCurseForgeClient{
+			addons: []curseforge.Mod{
+				createTestMod(1, "addon-one", "Addon One"),
+				createTestMod(2, "addon-two", "Addon Two"),
+			},
+		}
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
+		_, err := service.RunFullSync(ctx)
+		require.NoError(t, err)
+
+		// Mark only addon 1 as synced (addon 2 is "missing")
+		affected, err := tdb.Queries.MarkMissingAddonsInactive(ctx, []int32{1})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected) // Only addon 2 should be marked inactive
+
+		// Verify addon 1 is still active
+		addon1, err := tdb.Queries.GetAddonByID(ctx, 1)
+		require.NoError(t, err)
+		assert.Equal(t, "active", addon1.Status.String)
+
+		// Verify addon 2 is now inactive
+		addon2, err := tdb.Queries.GetAddonByID(ctx, 2)
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", addon2.Status.String)
+	})
+}
+
+func TestUpsertAddonReactivation(t *testing.T) {
+	t.Run("reactivates inactive addon on sync", func(t *testing.T) {
+		tdb := testutil.SetupTestDB(t)
+		ctx := context.Background()
+
+		// Create and sync an addon
+		mockClient := &mockCurseForgeClient{
+			addons: []curseforge.Mod{
+				createTestMod(1, "test-addon", "Test Addon"),
+			},
+		}
+		service := NewServiceWithClient(tdb.Pool, tdb.Queries, mockClient)
+		_, err := service.RunFullSync(ctx)
+		require.NoError(t, err)
+
+		// Mark it inactive (simulating it was missing from previous sync)
+		_, err = tdb.Queries.MarkMissingAddonsInactive(ctx, []int32{})
+		require.NoError(t, err)
+
+		// Verify it's inactive
+		addon, err := tdb.Queries.GetAddonByID(ctx, 1)
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", addon.Status.String)
+
+		// Sync again (addon reappears in CurseForge API)
+		_, err = service.RunFullSync(ctx)
+		require.NoError(t, err)
+
+		// Verify it's reactivated (UpsertAddon sets status='active')
+		addon, err = tdb.Queries.GetAddonByID(ctx, 1)
+		require.NoError(t, err)
+		assert.Equal(t, "active", addon.Status.String)
 	})
 }
