@@ -14,3 +14,11 @@ dockerfilePath = "Dockerfile.api"
 
 [services.addon-radar-api.deploy]
 numReplicas = 1
+
+# Web frontend service
+[services.addon-radar-web.build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.web"
+
+[services.addon-radar-web.deploy]
+numReplicas = 1
