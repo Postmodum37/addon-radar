@@ -7,8 +7,8 @@ A website that helps World of Warcraft players discover trending and rising addo
 ## Current Status: Frontend Deployed ✅
 
 **Live Production:**
-- **Frontend**: https://addon-radar-web-production.up.railway.app
-- **API**: https://addon-radar-api-production.up.railway.app
+- **Frontend**: https://addon-radar.com
+- **API**: https://api.addon-radar.com
 - **Sync Job**: Running hourly via Railway cron
 - **Data**: 12,424 Retail addons with hourly snapshots
 

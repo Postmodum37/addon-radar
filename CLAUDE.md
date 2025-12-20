@@ -26,8 +26,8 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 
 | Component | URL | Status |
 |-----------|-----|--------|
-| Frontend | https://addon-radar-web-production.up.railway.app | ✅ Live |
-| API | https://addon-radar-api-production.up.railway.app | ✅ Live |
+| Frontend | https://addon-radar.com | ✅ Live |
+| API | https://api.addon-radar.com | ✅ Live |
 | Sync Job | Railway cron (hourly) | ✅ Running |
 | Trending Calculation | Part of sync job | ✅ Running |
 
@@ -208,7 +208,7 @@ curl http://localhost:8080/api/v1/trending/hot
 curl http://localhost:8080/api/v1/trending/rising
 
 # Production API
-curl https://addon-radar-api-production.up.railway.app/api/v1/trending/hot
+curl https://api.addon-radar.com/api/v1/trending/hot
 ```
 
 ### Railway Deployment

@@ -86,7 +86,8 @@
 
 ## Production URLs
 
-- **API**: https://addon-radar-api-production.up.railway.app
+- **Frontend**: https://addon-radar.com
+- **API**: https://api.addon-radar.com
 - **Sync Job**: Running hourly via Railway cron
 
 ## Notes
