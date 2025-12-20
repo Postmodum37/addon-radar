@@ -22,14 +22,14 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 
 ## Current Status
 
-**Phase 3 Complete**: Trending algorithm implemented and deployed.
+**Phase 4 Complete**: Frontend built and ready for deployment.
 
 | Component | URL | Status |
 |-----------|-----|--------|
 | API | https://addon-radar-api-production.up.railway.app | ✅ Live |
 | Sync Job | Railway cron (hourly) | ✅ Running |
 | Trending Calculation | Part of sync job | ✅ Running |
-| Frontend | TBD | Planned |
+| Frontend | Ready for deployment | ✅ Built |
 
 **Data**: 12,424 Retail addons with hourly snapshots and trending scores.
 
@@ -41,6 +41,7 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 | Web Framework | Gin |
 | Database | PostgreSQL |
 | DB Library | sqlc + pgx/v5 |
+| Frontend | SvelteKit + Bun |
 | Config | envconfig |
 | Logging | slog (stdlib) |
 | Hosting | Railway |
@@ -60,6 +61,12 @@ addon-radar/
 │   ├── sync/               # Sync service ✅
 │   ├── testutil/           # Test utilities ✅
 │   └── trending/           # Trending algorithm ✅
+├── web/                    # SvelteKit frontend ✅
+│   ├── src/
+│   │   ├── lib/            # Components, API client
+│   │   └── routes/         # Pages
+│   ├── Dockerfile.web      # For Railway deployment
+│   └── bun.lockb           # Bun lockfile
 ├── sql/
 │   ├── schema.sql
 │   └── queries.sql
@@ -215,6 +222,37 @@ git push origin main
 # Check deployment status in Railway dashboard
 # https://railway.app/dashboard
 ```
+
+### Frontend Development
+
+The web frontend is built with SvelteKit and uses Bun as the runtime and package manager.
+
+```bash
+# Navigate to web directory
+cd web
+
+# Install dependencies
+bun install
+
+# Run development server
+bun run dev           # Starts on http://localhost:5173
+
+# Build for production
+bun run build         # Output in .svelte-kit/output
+
+# Preview production build
+bun run preview       # Test production build locally
+
+# Type checking
+bun run check         # Run svelte-check
+```
+
+#### Frontend Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_API_URL` | Backend API URL (development) | `http://localhost:8080` |
+| `API_URL` | Backend API URL (production, Railway internal) | Set in Railway |
 
 ## Design Documents
 

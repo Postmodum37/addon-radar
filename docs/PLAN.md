@@ -96,12 +96,13 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Add comprehensive testing infrastructure (testutil, httptest)
 - [x] Add error rate threshold (fail if >1% errors)
 
-### Phase 4: Frontend (Next)
-- [ ] Choose framework (Svelte, React, or HTMX)
-- [ ] Homepage with trending lists
-- [ ] Addon detail pages
-- [ ] Search and filtering
-- [ ] Deploy
+### Phase 4: Frontend ✅
+- [x] Choose framework (SvelteKit with Bun)
+- [x] Homepage with trending lists
+- [x] Addon detail pages
+- [x] Search with pagination
+- [x] Railway deployment config
+- [ ] Deploy to Railway
 
 ### Phase 5: Polish
 - [ ] Hot addon detection for faster sync
@@ -116,7 +117,7 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 | Web Framework | Gin | ✅ |
 | Database | PostgreSQL | ✅ |
 | DB Library | sqlc + pgx/v5 | ✅ |
-| Frontend | TBD | Planned |
+| Frontend | SvelteKit + Bun | ✅ |
 | Hosting | Railway | ✅ |
 
 ## Resources

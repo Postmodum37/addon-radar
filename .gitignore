@@ -24,3 +24,9 @@ dist/
 .serena
 
 .mcp.json
+
+# Web frontend
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.env
