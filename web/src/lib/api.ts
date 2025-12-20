@@ -1,3 +1,4 @@
+import { env } from '$env/dynamic/private';
 import type {
 	Addon,
 	TrendingAddon,
@@ -6,7 +7,9 @@ import type {
 	DataResponse
 } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+// Server-side: use API_URL from Railway internal network
+// Client-side fallback: use VITE_API_URL (only for dev)
+const API_URL = env.API_URL || import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 async function fetchApi<T>(path: string): Promise<T | null> {
 	try {
