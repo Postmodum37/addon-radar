@@ -4,9 +4,10 @@
 
 A website that helps World of Warcraft players discover trending and rising addons for **Retail** version. The main focus is a unique trendiness algorithm that surfaces both established hot addons and lesser-known rising stars.
 
-## Current Status: API Complete ✅
+## Current Status: Frontend Deployed ✅
 
 **Live Production:**
+- **Frontend**: https://addon-radar-web-production.up.railway.app
 - **API**: https://addon-radar-api-production.up.railway.app
 - **Sync Job**: Running hourly via Railway cron
 - **Data**: 12,424 Retail addons with hourly snapshots
@@ -22,7 +23,7 @@ A website that helps World of Warcraft players discover trending and rising addo
                                               ▼
                                         ┌─────────────┐
                                         │  Frontend   │
-                                        │  (Planned)  │
+                                        │ (SvelteKit) │
                                         └─────────────┘
 ```
 
@@ -31,7 +32,7 @@ A website that helps World of Warcraft players discover trending and rising addo
 | Sync Job | ✅ Deployed | Hourly CurseForge sync |
 | PostgreSQL | ✅ Deployed | Hosted on Railway |
 | REST API | ✅ Deployed | JSON endpoints for all data |
-| Frontend | 🔜 Next | To be built |
+| Frontend | ✅ Deployed | SvelteKit + Bun on Railway |
 
 ## API Endpoints
 
@@ -102,7 +103,7 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Addon detail pages
 - [x] Search with pagination
 - [x] Railway deployment config
-- [ ] Deploy to Railway
+- [x] Deploy to Railway
 
 ### Phase 5: Polish
 - [ ] Hot addon detection for faster sync

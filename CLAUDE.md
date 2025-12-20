@@ -22,14 +22,14 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 
 ## Current Status
 
-**Phase 4 Complete**: Frontend built and ready for deployment.
+**Phase 4 Complete**: Frontend deployed and live.
 
 | Component | URL | Status |
 |-----------|-----|--------|
+| Frontend | https://addon-radar-web-production.up.railway.app | ✅ Live |
 | API | https://addon-radar-api-production.up.railway.app | ✅ Live |
 | Sync Job | Railway cron (hourly) | ✅ Running |
 | Trending Calculation | Part of sync job | ✅ Running |
-| Frontend | Ready for deployment | ✅ Built |
 
 **Data**: 12,424 Retail addons with hourly snapshots and trending scores.
 
@@ -65,8 +65,8 @@ addon-radar/
 │   ├── src/
 │   │   ├── lib/            # Components, API client
 │   │   └── routes/         # Pages
-│   ├── Dockerfile.web      # For Railway deployment
-│   └── bun.lockb           # Bun lockfile
+│   └── bun.lock            # Bun lockfile
+├── Dockerfile.web          # Frontend container
 ├── sql/
 │   ├── schema.sql
 │   └── queries.sql
@@ -268,6 +268,8 @@ bun run check         # Run svelte-check
 | `2025-12-11-testing-infrastructure.md` | **Complete** |
 | `2025-12-16-fix-curseforge-api-timeout.md` | Complete |
 | `2025-12-16-dev-hooks-implementation.md` | Complete |
+| `2025-12-20-frontend-architecture-design.md` | **Complete** |
+| `2025-12-20-frontend-sveltekit-implementation.md` | **Complete** |
 
 ## Serena MCP
 
@@ -298,38 +300,6 @@ mcp__serena__get_symbols_overview        # Get file structure
 mcp__serena__search_for_pattern          # Regex search
 mcp__serena__write_memory                # Persist new knowledge
 ```
-
-## Context7 MCP
-
-Context7 fetches up-to-date documentation for libraries and frameworks. Use it instead of relying on potentially outdated training data.
-
-### When to Use Context7
-- **Using unfamiliar libraries**: Get current API docs and examples
-- **Checking latest syntax**: Verify correct usage of library methods
-- **Debugging library issues**: Fetch docs to understand expected behavior
-- **Before implementing features**: Research library capabilities first
-
-### Key Context7 Tools
-```
-mcp__context7__resolve-library-id   # Find library ID (required first step)
-mcp__context7__get-library-docs     # Fetch documentation for a library
-```
-
-### Example Usage
-```
-# Step 1: Find the library ID
-resolve-library-id("pgx")  → "/jackc/pgx"
-
-# Step 2: Fetch docs (optionally with topic filter)
-get-library-docs("/jackc/pgx", topic="connection pool")
-```
-
-### Libraries Used in This Project
-| Library | Context7 ID | Use For |
-|---------|-------------|---------|
-| pgx/v5 | `/jackc/pgx` | PostgreSQL driver, connection pooling |
-| Gin | `/gin-gonic/gin` | HTTP routing, middleware |
-| sqlc | `/sqlc-dev/sqlc` | SQL code generation |
 
 ## Ref MCP
 
@@ -418,6 +388,51 @@ mcp__pal__codereview(
 - Pass absolute file paths to `relevant_files` for code context
 - Use `continuation_id` to maintain context across multiple tool calls
 - Set `thinking_mode` to "high" or "max" for complex analysis
+
+## Tavily MCP
+
+Tavily provides AI-powered web search and content extraction. **Use Tavily for real-time web searches**, current events, and extracting content from URLs.
+
+### When to Use Tavily
+- **Web search**: Find current information, news, documentation not in other MCPs
+- **Content extraction**: Get clean markdown from web pages
+- **Site crawling**: Explore website structure and content
+- **Research**: Gather information from multiple sources
+
+### Key Tavily Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__tavily__tavily-search` | Search the web with AI-powered results |
+| `mcp__tavily__tavily-extract` | Extract content from specific URLs |
+| `mcp__tavily__tavily-crawl` | Crawl websites starting from a URL |
+| `mcp__tavily__tavily-map` | Map website structure and URLs |
+
+### Example Usage
+```
+# Web search
+mcp__tavily__tavily-search(
+  query="SvelteKit Railway deployment 2025",
+  max_results=10
+)
+
+# Extract content from URL
+mcp__tavily__tavily-extract(
+  urls=["https://kit.svelte.dev/docs/adapter-node"]
+)
+
+# Search with domain filter
+mcp__tavily__tavily-search(
+  query="bun install frozen lockfile",
+  include_domains=["bun.sh"]
+)
+```
+
+### Tips
+- Use `topic="news"` for recent news articles
+- Set `search_depth="advanced"` for more thorough results
+- Use `include_domains` to restrict search to specific sites
+- For time-sensitive queries, use `time_range="week"` or `"month"`
 
 ## External Resources
 
