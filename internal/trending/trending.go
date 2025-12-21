@@ -3,10 +3,14 @@ package trending
 import "math"
 
 const (
-	DownloadWeight = 0.7
-	ThumbsWeight   = 0.2
-	UpdateWeight   = 0.1
-	UpdateBoost    = 10.0 // Boost value when addon has recent update
+	// Hot Right Now weights (total = 1.0)
+	HotDownloadWeight = 0.85
+	HotUpdateWeight   = 0.15
+	UpdateBoost       = 10.0 // Boost value when addon has recent update
+
+	// Rising Stars weights (total = 1.0)
+	RisingGrowthWeight      = 0.70
+	RisingMaintenanceWeight = 0.30
 
 	HotGravity    = 1.5
 	RisingGravity = 1.8
@@ -62,30 +66,47 @@ func CalculateVelocity(velocity24h, velocity7d float64, dataPoints24h int, chang
 	return false, (0.3 * velocity24h) + (0.7 * velocity7d)
 }
 
-// CalculateWeightedSignal blends download, thumbs, and update signals.
-// Signal blend: 70% downloads + 20% thumbs + 10% update boost.
-func CalculateWeightedSignal(downloadSignal, thumbsSignal float64, hasRecentUpdate bool) float64 {
-	updateBoost := 0.0
-	if hasRecentUpdate {
-		updateBoost = UpdateBoost
-	}
-	return (DownloadWeight * downloadSignal) + (ThumbsWeight * thumbsSignal) + (UpdateWeight * updateBoost)
-}
-
 // CalculateHotScore computes the "Hot Right Now" score.
-// Formula: (weighted_velocity * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.5
-func CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
-	numerator := weightedVelocity * sizeMultiplier * maintenanceMultiplier
+// Formula: (hot_signal * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.5
+func CalculateHotScore(hotSignal, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
+	numerator := hotSignal * sizeMultiplier * maintenanceMultiplier
 	denominator := math.Pow(ageHours+AgeOffset, HotGravity)
 	return numerator / denominator
 }
 
 // CalculateRisingScore computes the "Rising Stars" score.
-// Formula: (weighted_growth_pct * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.8
-func CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
-	numerator := weightedGrowthPct * sizeMultiplier * maintenanceMultiplier
+// Formula: rising_signal / (age_hours + 2)^1.8
+// Note: No size multiplier - relative growth already handles this.
+// Note: Maintenance is included in rising_signal, not separate.
+func CalculateRisingScore(risingSignal, ageHours float64) float64 {
 	denominator := math.Pow(ageHours+AgeOffset, RisingGravity)
-	return numerator / denominator
+	return risingSignal / denominator
+}
+
+// CalculateHotSignal computes the signal for Hot Right Now.
+// Signal blend: 85% downloads + 15% update boost.
+func CalculateHotSignal(downloadSignal float64, hasRecentUpdate bool) float64 {
+	updateBoost := 0.0
+	if hasRecentUpdate {
+		updateBoost = UpdateBoost
+	}
+	return (HotDownloadWeight * downloadSignal) + (HotUpdateWeight * updateBoost)
+}
+
+// CalculateRelativeGrowth computes growth as a fraction of total downloads.
+// Returns downloads_gained / total_downloads, naturally favoring smaller addons.
+func CalculateRelativeGrowth(downloadsGained, totalDownloads int64) float64 {
+	if totalDownloads <= 0 {
+		return 0.0
+	}
+	return float64(downloadsGained) / float64(totalDownloads)
+}
+
+// CalculateRisingSignal computes the signal for Rising Stars.
+// Signal blend: 70% relative growth + 30% maintenance multiplier.
+// Maintenance is included in signal (not as separate multiplier) for Rising.
+func CalculateRisingSignal(relativeGrowth, maintenanceMultiplier float64) float64 {
+	return (RisingGrowthWeight * relativeGrowth) + (RisingMaintenanceWeight * maintenanceMultiplier)
 }
 
 func clamp(v, min, max float64) float64 {

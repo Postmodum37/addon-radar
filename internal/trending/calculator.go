@@ -26,27 +26,49 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	slog.Info("starting trending calculation")
 	start := time.Now()
 
-	// Step 1: Get 95th percentile
-	percentile95, err := c.db.GetDownloadPercentile(ctx)
+	// Step 1: Load all data
+	percentile95, scoreMap, updateMap, allStats, err := c.loadAllData(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Step 2: Calculate and upsert scores
+	processed := c.processAllAddons(ctx, allStats, percentile95, scoreMap, updateMap)
+
+	// Step 3: Clear ages for dropped addons
+	c.clearDroppedAddonAges(ctx)
+
+	// Step 4: Record and cleanup history
+	if err := c.recordAndCleanupHistory(ctx); err != nil {
+		return err
+	}
+
+	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
+	return nil
+}
+
+func (c *Calculator) loadAllData(ctx context.Context) (float64, map[int32]database.GetAllTrendingScoresRow, map[int32]int32, []database.GetAllSnapshotStatsRow, error) {
+	// Get 95th percentile
+	percentile95, err := c.db.GetDownloadPercentile(ctx)
+	if err != nil {
+		return 0, nil, nil, nil, err
 	}
 	if percentile95 <= 0 {
 		percentile95 = 500000
 	}
 	slog.Info("percentile", "p95", percentile95)
 
-	// Step 2: Bulk fetch all snapshot stats (1 query instead of 2N)
+	// Bulk fetch all snapshot stats
 	allStats, err := c.db.GetAllSnapshotStats(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	slog.Info("loaded snapshot stats", "count", len(allStats))
 
-	// Step 3: Bulk fetch existing trending scores (1 query instead of N)
+	// Bulk fetch existing trending scores
 	existingScores, err := c.db.GetAllTrendingScores(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	scoreMap := make(map[int32]database.GetAllTrendingScoresRow)
 	for _, s := range existingScores {
@@ -54,10 +76,10 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	}
 	slog.Info("loaded existing scores", "count", len(existingScores))
 
-	// Step 4: Bulk fetch update counts (1 query instead of N)
+	// Bulk fetch update counts
 	updateCounts, err := c.db.CountAllRecentFileUpdates(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	updateMap := make(map[int32]int32)
 	for _, u := range updateCounts {
@@ -65,7 +87,10 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	}
 	slog.Info("loaded update counts", "count", len(updateCounts))
 
-	// Step 5: Calculate and upsert scores
+	return percentile95, scoreMap, updateMap, allStats, nil
+}
+
+func (c *Calculator) processAllAddons(ctx context.Context, allStats []database.GetAllSnapshotStatsRow, percentile95 float64, scoreMap map[int32]database.GetAllTrendingScoresRow, updateMap map[int32]int32) int {
 	processed := 0
 	for _, stat := range allStats {
 		if err := c.calculateAndUpsert(ctx, stat, percentile95, scoreMap, updateMap); err != nil {
@@ -77,16 +102,34 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 			slog.Info("progress", "processed", processed, "total", len(allStats))
 		}
 	}
+	return processed
+}
 
-	// Step 6: Clear ages for dropped addons
+func (c *Calculator) clearDroppedAddonAges(ctx context.Context) {
 	if err := c.db.ClearTrendingAgeForDroppedAddons(ctx); err != nil {
 		slog.Warn("clear hot age failed", "err", err)
 	}
 	if err := c.db.ClearRisingAgeForDroppedAddons(ctx); err != nil {
 		slog.Warn("clear rising age failed", "err", err)
 	}
+}
 
-	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
+func (c *Calculator) recordAndCleanupHistory(ctx context.Context) error {
+	hotAddons, err := c.db.ListHotAddons(ctx, 20)
+	if err != nil {
+		return fmt.Errorf("list hot addons for history: %w", err)
+	}
+	risingAddons, err := c.db.ListRisingAddons(ctx, 20)
+	if err != nil {
+		return fmt.Errorf("list rising addons for history: %w", err)
+	}
+	if err := c.recordRankHistory(ctx, hotAddons, risingAddons); err != nil {
+		return fmt.Errorf("record rank history: %w", err)
+	}
+
+	if err := c.cleanupOldRankHistory(ctx); err != nil {
+		slog.Warn("failed to cleanup rank history", "error", err)
+	}
 	return nil
 }
 
@@ -118,18 +161,19 @@ func (c *Calculator) calculateAndUpsert(
 		hasRecentUpdate = time.Since(stat.LatestFileDate.Time) < 7*24*time.Hour
 	}
 
-	// Weighted signals
-	weightedVelocity := CalculateWeightedSignal(downloadVelocity, thumbsVelocity, hasRecentUpdate)
-	weightedGrowthPct := CalculateWeightedSignal(downloadGrowthPct, thumbsGrowthPct, hasRecentUpdate)
+	// Calculate signals using new v2 functions
+	hotSignal := CalculateHotSignal(downloadVelocity, hasRecentUpdate)
+	relativeGrowth := CalculateRelativeGrowth(stat.DownloadChange7d, stat.MinDownloads7d)
+	risingSignal := CalculateRisingSignal(relativeGrowth, maintenanceMultiplier)
 
 	// Calculate age and timestamps
 	existing := scoreMap[stat.AddonID]
-	hotAgeHours, firstHotAt := c.calculateHotAge(downloads, weightedVelocity, existing)
-	risingAgeHours, firstRisingAt := c.calculateRisingAge(downloads, weightedGrowthPct, existing)
+	hotAgeHours, firstHotAt := c.calculateHotAge(downloads, hotSignal, existing)
+	risingAgeHours, firstRisingAt := c.calculateRisingAge(downloads, risingSignal, existing)
 
 	// Final scores
-	hotScore := c.calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
-	risingScore := c.calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+	hotScore := c.calculateHotScore(downloads, hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+	risingScore := c.calculateRisingScore(downloads, risingSignal, risingAgeHours)
 
 	// Upsert
 	return c.upsertScore(ctx, stat.AddonID, hotScore, risingScore, downloadVelocity, thumbsVelocity,
@@ -175,10 +219,10 @@ func (c *Calculator) calculateGrowthPercentages(stat database.GetAllSnapshotStat
 	return downloadGrowthPct, thumbsGrowthPct
 }
 
-func (c *Calculator) calculateHotAge(downloads, weightedVelocity float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
+func (c *Calculator) calculateHotAge(downloads, hotSignal float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var hotAgeHours float64
 	var firstHotAt pgtype.Timestamptz
-	if downloads >= 500 && weightedVelocity > 0 {
+	if downloads >= 500 && hotSignal > 0 {
 		if existing.FirstHotAt.Valid {
 			hotAgeHours = time.Since(existing.FirstHotAt.Time).Hours()
 			firstHotAt = existing.FirstHotAt
@@ -189,10 +233,10 @@ func (c *Calculator) calculateHotAge(downloads, weightedVelocity float64, existi
 	return hotAgeHours, firstHotAt
 }
 
-func (c *Calculator) calculateRisingAge(downloads, weightedGrowthPct float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
+func (c *Calculator) calculateRisingAge(downloads, risingSignal float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var risingAgeHours float64
 	var firstRisingAt pgtype.Timestamptz
-	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
+	if downloads >= 50 && downloads <= 10000 && risingSignal > 0 {
 		if existing.FirstRisingAt.Valid {
 			risingAgeHours = time.Since(existing.FirstRisingAt.Time).Hours()
 			firstRisingAt = existing.FirstRisingAt
@@ -203,16 +247,16 @@ func (c *Calculator) calculateRisingAge(downloads, weightedGrowthPct float64, ex
 	return risingAgeHours, firstRisingAt
 }
 
-func (c *Calculator) calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours float64) float64 {
-	if downloads >= 500 && weightedVelocity > 0 {
-		return CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+func (c *Calculator) calculateHotScore(downloads, hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours float64) float64 {
+	if downloads >= 500 && hotSignal > 0 {
+		return CalculateHotScore(hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
 	}
 	return 0
 }
 
-func (c *Calculator) calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours float64) float64 {
-	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
-		return CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+func (c *Calculator) calculateRisingScore(downloads, risingSignal, risingAgeHours float64) float64 {
+	if downloads >= 50 && downloads <= 10000 && risingSignal > 0 {
+		return CalculateRisingScore(risingSignal, risingAgeHours)
 	}
 	return 0
 }
@@ -240,4 +284,45 @@ func (c *Calculator) upsertScore(ctx context.Context, addonID int32, hotScore, r
 		FirstHotAt:            firstHotAt,
 		FirstRisingAt:         firstRisingAt,
 	})
+}
+
+func (c *Calculator) recordRankHistory(ctx context.Context, hotAddons []database.ListHotAddonsRow, risingAddons []database.ListRisingAddonsRow) error {
+	// Record hot addon ranks
+	for i, addon := range hotAddons {
+		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
+			AddonID:  addon.ID,
+			Category: "hot",
+			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:    addon.HotScore,
+		})
+		if err != nil {
+			return fmt.Errorf("insert hot rank history: %w", err)
+		}
+	}
+
+	// Record rising addon ranks
+	for i, addon := range risingAddons {
+		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
+			AddonID:  addon.ID,
+			Category: "rising",
+			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:    addon.RisingScore,
+		})
+		if err != nil {
+			return fmt.Errorf("insert rising rank history: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Calculator) cleanupOldRankHistory(ctx context.Context) error {
+	deleted, err := c.db.DeleteOldRankHistory(ctx)
+	if err != nil {
+		return fmt.Errorf("delete old rank history: %w", err)
+	}
+	if deleted > 0 {
+		slog.Info("cleaned up old rank history", "deleted", deleted)
+	}
+	return nil
 }

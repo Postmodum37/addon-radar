@@ -104,51 +104,10 @@ func TestCalculateVelocity(t *testing.T) {
 	}
 }
 
-func TestCalculateWeightedSignal(t *testing.T) {
-	tests := []struct {
-		name           string
-		downloadSignal float64
-		thumbsSignal   float64
-		hasUpdate      bool
-		want           float64
-	}{
-		{
-			name:           "all signals with update",
-			downloadSignal: 100.0,
-			thumbsSignal:   50.0,
-			hasUpdate:      true,
-			want:           80.0 + 1.0, // 0.7*100 + 0.2*50 + 0.1*10
-		},
-		{
-			name:           "all signals without update",
-			downloadSignal: 100.0,
-			thumbsSignal:   50.0,
-			hasUpdate:      false,
-			want:           80.0, // 0.7*100 + 0.2*50 + 0
-		},
-		{
-			name:           "zero values",
-			downloadSignal: 0,
-			thumbsSignal:   0,
-			hasUpdate:      false,
-			want:           0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateWeightedSignal(tt.downloadSignal, tt.thumbsSignal, tt.hasUpdate)
-			if math.Abs(got-tt.want) > 0.01 {
-				t.Errorf("CalculateWeightedSignal() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCalculateHotScore(t *testing.T) {
 	tests := []struct {
 		name                  string
-		weightedVelocity      float64
+		hotSignal             float64
 		sizeMultiplier        float64
 		maintenanceMultiplier float64
 		ageHours              float64
@@ -156,25 +115,25 @@ func TestCalculateHotScore(t *testing.T) {
 	}{
 		{
 			name:                  "new addon",
-			weightedVelocity:      100.0,
+			hotSignal:             86.5, // 0.85*100 + 0.15*10
 			sizeMultiplier:        0.5,
 			maintenanceMultiplier: 1.1,
 			ageHours:              0,
-			want:                  19.45, // (100 * 0.5 * 1.1) / (0+2)^1.5
+			want:                  16.82, // (86.5 * 0.5 * 1.1) / (0+2)^1.5
 		},
 		{
 			name:                  "24h old addon",
-			weightedVelocity:      100.0,
+			hotSignal:             86.5,
 			sizeMultiplier:        0.5,
 			maintenanceMultiplier: 1.1,
 			ageHours:              24,
-			want:                  0.41, // (100 * 0.5 * 1.1) / (24+2)^1.5
+			want:                  0.36, // (86.5 * 0.5 * 1.1) / (24+2)^1.5
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateHotScore(tt.weightedVelocity, tt.sizeMultiplier, tt.maintenanceMultiplier, tt.ageHours)
+			got := CalculateHotScore(tt.hotSignal, tt.sizeMultiplier, tt.maintenanceMultiplier, tt.ageHours)
 			if math.Abs(got-tt.want) > 0.1 {
 				t.Errorf("CalculateHotScore() = %v, want %v", got, tt.want)
 			}
@@ -184,36 +143,141 @@ func TestCalculateHotScore(t *testing.T) {
 
 func TestCalculateRisingScore(t *testing.T) {
 	tests := []struct {
-		name                  string
-		weightedGrowthPct     float64
-		sizeMultiplier        float64
-		maintenanceMultiplier float64
-		ageHours              float64
-		want                  float64
+		name         string
+		risingSignal float64
+		ageHours     float64
+		want         float64
 	}{
 		{
-			name:                  "new addon",
-			weightedGrowthPct:     50.0,
-			sizeMultiplier:        0.3,
-			maintenanceMultiplier: 1.0,
-			ageHours:              0,
-			want:                  4.31, // (50 * 0.3 * 1.0) / (0+2)^1.8 = 15 / 3.482 = 4.308
+			name:         "new addon high signal",
+			risingSignal: 0.695, // 0.7*0.5 + 0.3*1.15
+			ageHours:     0,
+			want:         0.20, // 0.695 / (0+2)^1.8
 		},
 		{
-			name:                  "48h old addon",
-			weightedGrowthPct:     50.0,
-			sizeMultiplier:        0.3,
-			maintenanceMultiplier: 1.0,
-			ageHours:              48,
-			want:                  0.016, // (50 * 0.3 * 1.0) / (48+2)^1.8
+			name:         "48h old addon",
+			risingSignal: 0.695,
+			ageHours:     48,
+			want:         0.00075, // 0.695 / (48+2)^1.8
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CalculateRisingScore(tt.weightedGrowthPct, tt.sizeMultiplier, tt.maintenanceMultiplier, tt.ageHours)
-			if math.Abs(got-tt.want) > 0.1 {
+			got := CalculateRisingScore(tt.risingSignal, tt.ageHours)
+			if math.Abs(got-tt.want) > 0.01 {
 				t.Errorf("CalculateRisingScore() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateHotSignal(t *testing.T) {
+	tests := []struct {
+		name           string
+		downloadSignal float64
+		hasUpdate      bool
+		want           float64
+	}{
+		{
+			name:           "with update boost",
+			downloadSignal: 100.0,
+			hasUpdate:      true,
+			want:           86.5, // 0.85*100 + 0.15*10
+		},
+		{
+			name:           "without update",
+			downloadSignal: 100.0,
+			hasUpdate:      false,
+			want:           85.0, // 0.85*100 + 0
+		},
+		{
+			name:           "zero velocity",
+			downloadSignal: 0,
+			hasUpdate:      true,
+			want:           1.5, // 0 + 0.15*10
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateHotSignal(tt.downloadSignal, tt.hasUpdate)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("CalculateHotSignal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRelativeGrowth(t *testing.T) {
+	tests := []struct {
+		name            string
+		downloadsGained int64
+		totalDownloads  int64
+		want            float64
+	}{
+		{
+			name:            "small addon doubling",
+			downloadsGained: 100,
+			totalDownloads:  100,
+			want:            1.0, // 100% growth
+		},
+		{
+			name:            "large addon small gain",
+			downloadsGained: 1000,
+			totalDownloads:  100000,
+			want:            0.01, // 1% growth
+		},
+		{
+			name:            "zero downloads - avoid division by zero",
+			downloadsGained: 50,
+			totalDownloads:  0,
+			want:            0.0,
+		},
+		{
+			name:            "no gain",
+			downloadsGained: 0,
+			totalDownloads:  1000,
+			want:            0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateRelativeGrowth(tt.downloadsGained, tt.totalDownloads)
+			if math.Abs(got-tt.want) > 0.001 {
+				t.Errorf("CalculateRelativeGrowth() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRisingSignal(t *testing.T) {
+	tests := []struct {
+		name                  string
+		relativeGrowth        float64
+		maintenanceMultiplier float64
+		want                  float64
+	}{
+		{
+			name:                  "high growth active addon",
+			relativeGrowth:        0.5, // 50% growth
+			maintenanceMultiplier: 1.15,
+			want:                  0.695, // 0.7*0.5 + 0.3*1.15
+		},
+		{
+			name:                  "low growth stale addon",
+			relativeGrowth:        0.01,
+			maintenanceMultiplier: 0.95,
+			want:                  0.292, // 0.7*0.01 + 0.3*0.95
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateRisingSignal(tt.relativeGrowth, tt.maintenanceMultiplier)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("CalculateRisingSignal() = %v, want %v", got, tt.want)
 			}
 		})
 	}

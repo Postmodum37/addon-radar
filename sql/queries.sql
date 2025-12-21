@@ -290,3 +290,54 @@ UPDATE addons
 SET status = 'inactive', last_synced_at = NOW()
 WHERE status = 'active'
   AND NOT EXISTS (SELECT 1 FROM synced_ids WHERE synced_ids.id = addons.id);
+
+-- name: InsertRankHistory :exec
+-- Record current rank for an addon in a category
+INSERT INTO trending_rank_history (addon_id, category, rank, score, recorded_at)
+VALUES ($1, $2, $3, $4, NOW());
+
+-- name: GetRankAt :one
+-- Get the rank of an addon at a specific time (closest record before that time)
+SELECT rank FROM trending_rank_history
+WHERE addon_id = $1
+  AND category = $2
+  AND recorded_at <= $3
+ORDER BY recorded_at DESC
+LIMIT 1;
+
+-- name: DeleteOldRankHistory :execrows
+-- Delete rank history older than 7 days
+DELETE FROM trending_rank_history
+WHERE recorded_at < NOW() - INTERVAL '7 days';
+
+-- name: GetRankChanges :many
+-- Get rank changes for top addons (24h and 7d ago)
+WITH current_ranks AS (
+    SELECT addon_id, category, rank, score
+    FROM trending_rank_history
+    WHERE recorded_at = (
+        SELECT MAX(recorded_at) FROM trending_rank_history
+    )
+),
+ranks_24h AS (
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank
+    FROM trending_rank_history
+    WHERE recorded_at <= NOW() - INTERVAL '24 hours'
+    ORDER BY addon_id, category, recorded_at DESC
+),
+ranks_7d AS (
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank
+    FROM trending_rank_history
+    WHERE recorded_at <= NOW() - INTERVAL '7 days'
+    ORDER BY addon_id, category, recorded_at DESC
+)
+SELECT
+    c.addon_id,
+    c.category,
+    c.rank AS current_rank,
+    c.score,
+    r24.rank AS rank_24h_ago,
+    r7.rank AS rank_7d_ago
+FROM current_ranks c
+LEFT JOIN ranks_24h r24 ON c.addon_id = r24.addon_id AND c.category = r24.category
+LEFT JOIN ranks_7d r7 ON c.addon_id = r7.addon_id AND c.category = r7.category;

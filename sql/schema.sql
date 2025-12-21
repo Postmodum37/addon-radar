@@ -71,3 +71,19 @@ CREATE TABLE trending_scores (
 
 CREATE INDEX idx_trending_hot ON trending_scores(hot_score DESC) WHERE hot_score > 0;
 CREATE INDEX idx_trending_rising ON trending_scores(rising_score DESC) WHERE rising_score > 0;
+
+-- Trending rank history: tracks position changes over time
+CREATE TABLE trending_rank_history (
+    addon_id INTEGER NOT NULL REFERENCES addons(id) ON DELETE CASCADE,
+    category TEXT NOT NULL CHECK (category IN ('hot', 'rising')),
+    rank SMALLINT NOT NULL,
+    score DECIMAL(20,10) NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (addon_id, category, recorded_at)
+);
+
+CREATE INDEX idx_rank_history_time
+    ON trending_rank_history(category, recorded_at DESC);
+
+CREATE INDEX idx_rank_history_recorded
+    ON trending_rank_history(recorded_at);
