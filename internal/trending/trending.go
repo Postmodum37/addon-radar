@@ -3,10 +3,14 @@ package trending
 import "math"
 
 const (
-	DownloadWeight = 0.7
-	ThumbsWeight   = 0.2
-	UpdateWeight   = 0.1
-	UpdateBoost    = 10.0 // Boost value when addon has recent update
+	// Hot Right Now weights (total = 1.0)
+	HotDownloadWeight = 0.85
+	HotUpdateWeight   = 0.15
+	UpdateBoost       = 10.0 // Boost value when addon has recent update
+
+	// Rising Stars weights (total = 1.0)
+	RisingGrowthWeight      = 0.70
+	RisingMaintenanceWeight = 0.30
 
 	HotGravity    = 1.5
 	RisingGravity = 1.8
@@ -60,16 +64,6 @@ func CalculateVelocity(velocity24h, velocity7d float64, dataPoints24h int, chang
 	}
 	// Fall back to longer window
 	return false, (0.3 * velocity24h) + (0.7 * velocity7d)
-}
-
-// CalculateWeightedSignal blends download, thumbs, and update signals.
-// Signal blend: 70% downloads + 20% thumbs + 10% update boost.
-func CalculateWeightedSignal(downloadSignal, thumbsSignal float64, hasRecentUpdate bool) float64 {
-	updateBoost := 0.0
-	if hasRecentUpdate {
-		updateBoost = UpdateBoost
-	}
-	return (DownloadWeight * downloadSignal) + (ThumbsWeight * thumbsSignal) + (UpdateWeight * updateBoost)
 }
 
 // CalculateHotScore computes the "Hot Right Now" score.
