@@ -92,6 +92,22 @@ func CalculateHotSignal(downloadSignal float64, hasRecentUpdate bool) float64 {
 	return (HotDownloadWeight * downloadSignal) + (HotUpdateWeight * updateBoost)
 }
 
+// CalculateRelativeGrowth computes growth as a fraction of total downloads.
+// Returns downloads_gained / total_downloads, naturally favoring smaller addons.
+func CalculateRelativeGrowth(downloadsGained, totalDownloads int64) float64 {
+	if totalDownloads <= 0 {
+		return 0.0
+	}
+	return float64(downloadsGained) / float64(totalDownloads)
+}
+
+// CalculateRisingSignal computes the signal for Rising Stars.
+// Signal blend: 70% relative growth + 30% maintenance multiplier.
+// Maintenance is included in signal (not as separate multiplier) for Rising.
+func CalculateRisingSignal(relativeGrowth, maintenanceMultiplier float64) float64 {
+	return (RisingGrowthWeight * relativeGrowth) + (RisingMaintenanceWeight * maintenanceMultiplier)
+}
+
 func clamp(v, min, max float64) float64 {
 	if v < min {
 		return min

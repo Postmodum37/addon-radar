@@ -214,3 +214,77 @@ func TestCalculateHotSignal(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateRelativeGrowth(t *testing.T) {
+	tests := []struct {
+		name            string
+		downloadsGained int64
+		totalDownloads  int64
+		want            float64
+	}{
+		{
+			name:            "small addon doubling",
+			downloadsGained: 100,
+			totalDownloads:  100,
+			want:            1.0, // 100% growth
+		},
+		{
+			name:            "large addon small gain",
+			downloadsGained: 1000,
+			totalDownloads:  100000,
+			want:            0.01, // 1% growth
+		},
+		{
+			name:            "zero downloads - avoid division by zero",
+			downloadsGained: 50,
+			totalDownloads:  0,
+			want:            0.0,
+		},
+		{
+			name:            "no gain",
+			downloadsGained: 0,
+			totalDownloads:  1000,
+			want:            0.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateRelativeGrowth(tt.downloadsGained, tt.totalDownloads)
+			if math.Abs(got-tt.want) > 0.001 {
+				t.Errorf("CalculateRelativeGrowth() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateRisingSignal(t *testing.T) {
+	tests := []struct {
+		name                  string
+		relativeGrowth        float64
+		maintenanceMultiplier float64
+		want                  float64
+	}{
+		{
+			name:                  "high growth active addon",
+			relativeGrowth:        0.5, // 50% growth
+			maintenanceMultiplier: 1.15,
+			want:                  0.695, // 0.7*0.5 + 0.3*1.15
+		},
+		{
+			name:                  "low growth stale addon",
+			relativeGrowth:        0.01,
+			maintenanceMultiplier: 0.95,
+			want:                  0.292, // 0.7*0.01 + 0.3*0.95
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateRisingSignal(tt.relativeGrowth, tt.maintenanceMultiplier)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("CalculateRisingSignal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
