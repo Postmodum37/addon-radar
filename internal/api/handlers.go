@@ -26,7 +26,10 @@ type AddonResponse struct {
 
 type TrendingAddonResponse struct {
 	AddonResponse
-	Score float64 `json:"score"`
+	Score         float64 `json:"score"`
+	Rank          int     `json:"rank"`
+	RankChange24h *int    `json:"rank_change_24h"` // nil = new to list
+	RankChange7d  *int    `json:"rank_change_7d"`  // nil = new to list
 }
 
 func addonToResponse(a database.Addon) AddonResponse {
@@ -241,6 +244,22 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 		return
 	}
 
+	// Get rank changes
+	rankChanges, err := s.db.GetRankChanges(ctx)
+	if err != nil {
+		slog.Error("failed to get rank changes", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	// Build lookup map by addon_id for "hot" category
+	rankChangeMap := make(map[int32]database.GetRankChangesRow)
+	for _, rc := range rankChanges {
+		if rc.Category == "hot" {
+			rankChangeMap[rc.AddonID] = rc
+		}
+	}
+
 	response := make([]TrendingAddonResponse, len(addons))
 	for i, a := range addons {
 		response[i] = TrendingAddonResponse{
@@ -257,11 +276,26 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 				GameVersions:   a.GameVersions,
 				LastUpdatedAt:  a.LastUpdatedAt,
 			}),
+			Rank: i + 1, // 1-based rank
 		}
 		if a.HotScore.Valid {
 			f8, err := a.HotScore.Float64Value()
 			if err == nil {
 				response[i].Score = f8.Float64
+			}
+		}
+
+		// Add rank changes if available
+		if rc, ok := rankChangeMap[a.ID]; ok {
+			// Calculate rank change: old_rank - current_rank
+			// Positive = moved up, Negative = moved down
+			if rc.Rank24hAgo.Valid {
+				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
+				response[i].RankChange24h = &change
+			}
+			if rc.Rank7dAgo.Valid {
+				change := int(rc.Rank7dAgo.Int16 - rc.CurrentRank)
+				response[i].RankChange7d = &change
 			}
 		}
 	}
@@ -279,6 +313,22 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 		return
 	}
 
+	// Get rank changes
+	rankChanges, err := s.db.GetRankChanges(ctx)
+	if err != nil {
+		slog.Error("failed to get rank changes", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	// Build lookup map by addon_id for "rising" category
+	rankChangeMap := make(map[int32]database.GetRankChangesRow)
+	for _, rc := range rankChanges {
+		if rc.Category == "rising" {
+			rankChangeMap[rc.AddonID] = rc
+		}
+	}
+
 	response := make([]TrendingAddonResponse, len(addons))
 	for i, a := range addons {
 		response[i] = TrendingAddonResponse{
@@ -295,11 +345,26 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 				GameVersions:   a.GameVersions,
 				LastUpdatedAt:  a.LastUpdatedAt,
 			}),
+			Rank: i + 1, // 1-based rank
 		}
 		if a.RisingScore.Valid {
 			f8, err := a.RisingScore.Float64Value()
 			if err == nil {
 				response[i].Score = f8.Float64
+			}
+		}
+
+		// Add rank changes if available
+		if rc, ok := rankChangeMap[a.ID]; ok {
+			// Calculate rank change: old_rank - current_rank
+			// Positive = moved up, Negative = moved down
+			if rc.Rank24hAgo.Valid {
+				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
+				response[i].RankChange24h = &change
+			}
+			if rc.Rank7dAgo.Valid {
+				change := int(rc.Rank7dAgo.Int16 - rc.CurrentRank)
+				response[i].RankChange7d = &change
 			}
 		}
 	}
