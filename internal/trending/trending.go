@@ -82,6 +82,16 @@ func CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultipli
 	return numerator / denominator
 }
 
+// CalculateHotSignal computes the signal for Hot Right Now.
+// Signal blend: 85% downloads + 15% update boost.
+func CalculateHotSignal(downloadSignal float64, hasRecentUpdate bool) float64 {
+	updateBoost := 0.0
+	if hasRecentUpdate {
+		updateBoost = UpdateBoost
+	}
+	return (HotDownloadWeight * downloadSignal) + (HotUpdateWeight * updateBoost)
+}
+
 func clamp(v, min, max float64) float64 {
 	if v < min {
 		return min

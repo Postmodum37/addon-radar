@@ -177,3 +177,40 @@ func TestCalculateRisingScore(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateHotSignal(t *testing.T) {
+	tests := []struct {
+		name           string
+		downloadSignal float64
+		hasUpdate      bool
+		want           float64
+	}{
+		{
+			name:           "with update boost",
+			downloadSignal: 100.0,
+			hasUpdate:      true,
+			want:           86.5, // 0.85*100 + 0.15*10
+		},
+		{
+			name:           "without update",
+			downloadSignal: 100.0,
+			hasUpdate:      false,
+			want:           85.0, // 0.85*100 + 0
+		},
+		{
+			name:           "zero velocity",
+			downloadSignal: 0,
+			hasUpdate:      true,
+			want:           1.5, // 0 + 0.15*10
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateHotSignal(tt.downloadSignal, tt.hasUpdate)
+			if math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("CalculateHotSignal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
