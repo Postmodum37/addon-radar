@@ -67,19 +67,20 @@ func CalculateVelocity(velocity24h, velocity7d float64, dataPoints24h int, chang
 }
 
 // CalculateHotScore computes the "Hot Right Now" score.
-// Formula: (weighted_velocity * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.5
-func CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
-	numerator := weightedVelocity * sizeMultiplier * maintenanceMultiplier
+// Formula: (hot_signal * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.5
+func CalculateHotScore(hotSignal, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
+	numerator := hotSignal * sizeMultiplier * maintenanceMultiplier
 	denominator := math.Pow(ageHours+AgeOffset, HotGravity)
 	return numerator / denominator
 }
 
 // CalculateRisingScore computes the "Rising Stars" score.
-// Formula: (weighted_growth_pct * size_multiplier * maintenance_multiplier) / (age_hours + 2)^1.8
-func CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, ageHours float64) float64 {
-	numerator := weightedGrowthPct * sizeMultiplier * maintenanceMultiplier
+// Formula: rising_signal / (age_hours + 2)^1.8
+// Note: No size multiplier - relative growth already handles this.
+// Note: Maintenance is included in rising_signal, not separate.
+func CalculateRisingScore(risingSignal, ageHours float64) float64 {
 	denominator := math.Pow(ageHours+AgeOffset, RisingGravity)
-	return numerator / denominator
+	return risingSignal / denominator
 }
 
 // CalculateHotSignal computes the signal for Hot Right Now.

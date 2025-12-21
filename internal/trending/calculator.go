@@ -118,18 +118,19 @@ func (c *Calculator) calculateAndUpsert(
 		hasRecentUpdate = time.Since(stat.LatestFileDate.Time) < 7*24*time.Hour
 	}
 
-	// Weighted signals
-	weightedVelocity := CalculateWeightedSignal(downloadVelocity, thumbsVelocity, hasRecentUpdate)
-	weightedGrowthPct := CalculateWeightedSignal(downloadGrowthPct, thumbsGrowthPct, hasRecentUpdate)
+	// Calculate signals using new v2 functions
+	hotSignal := CalculateHotSignal(downloadVelocity, hasRecentUpdate)
+	relativeGrowth := CalculateRelativeGrowth(stat.DownloadChange7d, stat.MinDownloads7d)
+	risingSignal := CalculateRisingSignal(relativeGrowth, maintenanceMultiplier)
 
 	// Calculate age and timestamps
 	existing := scoreMap[stat.AddonID]
-	hotAgeHours, firstHotAt := c.calculateHotAge(downloads, weightedVelocity, existing)
-	risingAgeHours, firstRisingAt := c.calculateRisingAge(downloads, weightedGrowthPct, existing)
+	hotAgeHours, firstHotAt := c.calculateHotAge(downloads, hotSignal, existing)
+	risingAgeHours, firstRisingAt := c.calculateRisingAge(downloads, risingSignal, existing)
 
 	// Final scores
-	hotScore := c.calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
-	risingScore := c.calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+	hotScore := c.calculateHotScore(downloads, hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+	risingScore := c.calculateRisingScore(downloads, risingSignal, risingAgeHours)
 
 	// Upsert
 	return c.upsertScore(ctx, stat.AddonID, hotScore, risingScore, downloadVelocity, thumbsVelocity,
@@ -175,10 +176,10 @@ func (c *Calculator) calculateGrowthPercentages(stat database.GetAllSnapshotStat
 	return downloadGrowthPct, thumbsGrowthPct
 }
 
-func (c *Calculator) calculateHotAge(downloads, weightedVelocity float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
+func (c *Calculator) calculateHotAge(downloads, hotSignal float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var hotAgeHours float64
 	var firstHotAt pgtype.Timestamptz
-	if downloads >= 500 && weightedVelocity > 0 {
+	if downloads >= 500 && hotSignal > 0 {
 		if existing.FirstHotAt.Valid {
 			hotAgeHours = time.Since(existing.FirstHotAt.Time).Hours()
 			firstHotAt = existing.FirstHotAt
@@ -189,10 +190,10 @@ func (c *Calculator) calculateHotAge(downloads, weightedVelocity float64, existi
 	return hotAgeHours, firstHotAt
 }
 
-func (c *Calculator) calculateRisingAge(downloads, weightedGrowthPct float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
+func (c *Calculator) calculateRisingAge(downloads, risingSignal float64, existing database.GetAllTrendingScoresRow) (float64, pgtype.Timestamptz) {
 	var risingAgeHours float64
 	var firstRisingAt pgtype.Timestamptz
-	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
+	if downloads >= 50 && downloads <= 10000 && risingSignal > 0 {
 		if existing.FirstRisingAt.Valid {
 			risingAgeHours = time.Since(existing.FirstRisingAt.Time).Hours()
 			firstRisingAt = existing.FirstRisingAt
@@ -203,16 +204,16 @@ func (c *Calculator) calculateRisingAge(downloads, weightedGrowthPct float64, ex
 	return risingAgeHours, firstRisingAt
 }
 
-func (c *Calculator) calculateHotScore(downloads, weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours float64) float64 {
-	if downloads >= 500 && weightedVelocity > 0 {
-		return CalculateHotScore(weightedVelocity, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
+func (c *Calculator) calculateHotScore(downloads, hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours float64) float64 {
+	if downloads >= 500 && hotSignal > 0 {
+		return CalculateHotScore(hotSignal, sizeMultiplier, maintenanceMultiplier, hotAgeHours)
 	}
 	return 0
 }
 
-func (c *Calculator) calculateRisingScore(downloads, weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours float64) float64 {
-	if downloads >= 50 && downloads <= 10000 && weightedGrowthPct > 0 {
-		return CalculateRisingScore(weightedGrowthPct, sizeMultiplier, maintenanceMultiplier, risingAgeHours)
+func (c *Calculator) calculateRisingScore(downloads, risingSignal, risingAgeHours float64) float64 {
+	if downloads >= 50 && downloads <= 10000 && risingSignal > 0 {
+		return CalculateRisingScore(risingSignal, risingAgeHours)
 	}
 	return 0
 }
