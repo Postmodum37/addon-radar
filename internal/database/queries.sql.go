@@ -200,6 +200,20 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 	return err
 }
 
+const deleteOldRankHistory = `-- name: DeleteOldRankHistory :execrows
+DELETE FROM trending_rank_history
+WHERE recorded_at < NOW() - INTERVAL '7 days'
+`
+
+// Delete rank history older than 7 days
+func (q *Queries) DeleteOldRankHistory(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldRankHistory)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteOldSnapshotsBatch = `-- name: DeleteOldSnapshotsBatch :execrows
 DELETE FROM snapshots
 WHERE id IN (
@@ -541,6 +555,98 @@ func (q *Queries) GetHotAddonIDs(ctx context.Context) ([]int32, error) {
 	return items, nil
 }
 
+const getRankAt = `-- name: GetRankAt :one
+SELECT rank FROM trending_rank_history
+WHERE addon_id = $1
+  AND category = $2
+  AND recorded_at <= $3
+ORDER BY recorded_at DESC
+LIMIT 1
+`
+
+type GetRankAtParams struct {
+	AddonID    int32              `json:"addon_id"`
+	Category   string             `json:"category"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+}
+
+// Get the rank of an addon at a specific time (closest record before that time)
+func (q *Queries) GetRankAt(ctx context.Context, arg GetRankAtParams) (int16, error) {
+	row := q.db.QueryRow(ctx, getRankAt, arg.AddonID, arg.Category, arg.RecordedAt)
+	var rank int16
+	err := row.Scan(&rank)
+	return rank, err
+}
+
+const getRankChanges = `-- name: GetRankChanges :many
+WITH current_ranks AS (
+    SELECT addon_id, category, rank, score
+    FROM trending_rank_history
+    WHERE recorded_at = (
+        SELECT MAX(recorded_at) FROM trending_rank_history
+    )
+),
+ranks_24h AS (
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank
+    FROM trending_rank_history
+    WHERE recorded_at <= NOW() - INTERVAL '24 hours'
+    ORDER BY addon_id, category, recorded_at DESC
+),
+ranks_7d AS (
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank
+    FROM trending_rank_history
+    WHERE recorded_at <= NOW() - INTERVAL '7 days'
+    ORDER BY addon_id, category, recorded_at DESC
+)
+SELECT
+    c.addon_id,
+    c.category,
+    c.rank AS current_rank,
+    c.score,
+    r24.rank AS rank_24h_ago,
+    r7.rank AS rank_7d_ago
+FROM current_ranks c
+LEFT JOIN ranks_24h r24 ON c.addon_id = r24.addon_id AND c.category = r24.category
+LEFT JOIN ranks_7d r7 ON c.addon_id = r7.addon_id AND c.category = r7.category
+`
+
+type GetRankChangesRow struct {
+	AddonID     int32          `json:"addon_id"`
+	Category    string         `json:"category"`
+	CurrentRank int16          `json:"current_rank"`
+	Score       pgtype.Numeric `json:"score"`
+	Rank24hAgo  pgtype.Int2    `json:"rank_24h_ago"`
+	Rank7dAgo   pgtype.Int2    `json:"rank_7d_ago"`
+}
+
+// Get rank changes for top addons (24h and 7d ago)
+func (q *Queries) GetRankChanges(ctx context.Context) ([]GetRankChangesRow, error) {
+	rows, err := q.db.Query(ctx, getRankChanges)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetRankChangesRow{}
+	for rows.Next() {
+		var i GetRankChangesRow
+		if err := rows.Scan(
+			&i.AddonID,
+			&i.Category,
+			&i.CurrentRank,
+			&i.Score,
+			&i.Rank24hAgo,
+			&i.Rank7dAgo,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSnapshotStats = `-- name: GetSnapshotStats :one
 SELECT
     COALESCE(MAX(download_count) - MIN(download_count), 0) AS download_change,
@@ -602,6 +708,29 @@ func (q *Queries) GetTrendingScore(ctx context.Context, addonID int32) (Trending
 		&i.CalculatedAt,
 	)
 	return i, err
+}
+
+const insertRankHistory = `-- name: InsertRankHistory :exec
+INSERT INTO trending_rank_history (addon_id, category, rank, score, recorded_at)
+VALUES ($1, $2, $3, $4, NOW())
+`
+
+type InsertRankHistoryParams struct {
+	AddonID  int32          `json:"addon_id"`
+	Category string         `json:"category"`
+	Rank     int16          `json:"rank"`
+	Score    pgtype.Numeric `json:"score"`
+}
+
+// Record current rank for an addon in a category
+func (q *Queries) InsertRankHistory(ctx context.Context, arg InsertRankHistoryParams) error {
+	_, err := q.db.Exec(ctx, insertRankHistory,
+		arg.AddonID,
+		arg.Category,
+		arg.Rank,
+		arg.Score,
+	)
+	return err
 }
 
 const listAddons = `-- name: ListAddons :many

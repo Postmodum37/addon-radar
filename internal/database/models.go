@@ -51,6 +51,14 @@ type Snapshot struct {
 	LatestFileDate pgtype.Timestamptz `json:"latest_file_date"`
 }
 
+type TrendingRankHistory struct {
+	AddonID    int32              `json:"addon_id"`
+	Category   string             `json:"category"`
+	Rank       int16              `json:"rank"`
+	Score      pgtype.Numeric     `json:"score"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+}
+
 type TrendingScore struct {
 	AddonID               int32              `json:"addon_id"`
 	HotScore              pgtype.Numeric     `json:"hot_score"`
