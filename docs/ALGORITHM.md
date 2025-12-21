@@ -3,7 +3,8 @@
 This document describes the trending algorithm used by Addon Radar to surface popular and rising World of Warcraft addons. It serves as the authoritative reference for how addon scores are calculated.
 
 **Implementation:** `internal/trending/`
-**Last Updated:** 2025-12-17
+**Last Updated:** 2025-12-22
+**Version:** 2.0
 
 ---
 
@@ -25,7 +26,7 @@ Surfaces **established addons** with strong recent activity. These are proven ad
 Surfaces **emerging addons** gaining traction quickly. These are smaller addons that users might not discover otherwise.
 
 - Requires between 50 and 10,000 total downloads
-- Uses **growth percentage** as the primary metric
+- Uses **relative growth** (downloads gained / total downloads) as the primary metric
 - Aggressive decay rate cycles through discoveries quickly
 - Excludes addons already in Hot Right Now
 - Top 20 displayed
@@ -34,10 +35,21 @@ Surfaces **emerging addons** gaining traction quickly. These are smaller addons 
 
 Both scores are influenced by:
 
-1. **Activity Signal** - Downloads, thumbs up, and recent updates blended together (70/20/10 weight)
-2. **Size Multiplier** - Logarithmic scaling based on total downloads; smaller addons get a slight penalty to prevent gaming
+1. **Activity Signal** - Download velocity and recent updates blended together
+   - **Hot Right Now**: 85% download velocity + 15% update boost
+   - **Rising Stars**: 70% relative growth + 30% maintenance multiplier
+2. **Size Multiplier** - Logarithmic scaling based on total downloads (Hot Right Now only)
 3. **Maintenance Multiplier** - Bonus for addons with regular updates; penalty for abandoned addons
 4. **Time Decay** - Scores decrease over time to cycle fresh content onto the lists
+
+### Position Tracking
+
+Addon Radar tracks trending positions over time to show movement:
+
+- Records top 20 hot and rising ranks hourly
+- Maintains 7-day history for rank changes
+- API returns current rank, 24h change, and 7d change
+- Helps users identify rapidly climbing addons
 
 ### Age Reset Mechanism
 
@@ -67,24 +79,29 @@ flowchart TB
         J --> K
 
         K --> L[Apply Signal Blend]
-        L --> M[70% downloads + 20% thumbs + 10% update boost]
+        L --> M{Category}
+        M -->|Hot| N[85% downloads + 15% update boost]
+        M -->|Rising| O[70% relative growth + 30% maintenance]
 
-        M --> N[Apply Size Multiplier]
-        N --> O[log₁₀ scaling against 95th percentile]
+        N --> P[Apply Size Multiplier]
+        P --> Q[log₁₀ scaling against 95th percentile]
 
-        O --> P[Apply Maintenance Multiplier]
-        P --> Q[0.95x to 1.15x based on update frequency]
+        O --> R[Skip Size Multiplier]
+        Q --> S[Apply Maintenance Multiplier]
+        R --> S
+        S --> T[0.95x to 1.15x based on update frequency]
 
-        Q --> R[Apply Time Decay]
-        R --> S[Divide by age^gravity]
+        T --> U[Apply Time Decay]
+        U --> V[Divide by age^gravity]
     end
 
     subgraph Output
-        S --> T[Hot Score]
-        S --> U[Rising Score]
-        T --> V[Store in trending_scores]
-        U --> V
-        V --> W[API serves top 20 each]
+        V --> W[Hot Score]
+        V --> X[Rising Score]
+        W --> Y[Store in trending_scores]
+        X --> Y
+        Y --> Z[Record Top 20 Ranks]
+        Z --> AA[API serves with rank changes]
     end
 
     D --> E
@@ -97,31 +114,38 @@ flowchart TB
 flowchart LR
     subgraph Inputs
         DL[Download Velocity]
-        TH[Thumbs Velocity]
+        RG[Relative Growth]
         UP[Recent Update?]
         SZ[Total Downloads]
         MN[Updates in 90d]
         AG[Hours on List]
     end
 
-    subgraph Signal Blend
-        DL -->|×0.7| BL[Weighted Signal]
-        TH -->|×0.2| BL
-        UP -->|×0.1 if yes| BL
+    subgraph Signal Blend Hot
+        DL -->|×0.85| BLH[Hot Signal]
+        UP -->|×0.15 if yes| BLH
+    end
+
+    subgraph Signal Blend Rising
+        RG -->|×0.7| BLR[Rising Signal]
+        MN -->|×0.3| BLR
     end
 
     subgraph Multipliers
-        SZ --> SM[Size Mult<br/>0.1 - 1.0]
+        SZ --> SM[Size Mult<br/>0.1 - 1.0<br/>Hot only]
         MN --> MM[Maint Mult<br/>0.95 - 1.15]
     end
 
     subgraph Final Score
-        BL --> NUM[Numerator]
-        SM --> NUM
-        MM --> NUM
+        BLH --> NUMH[Hot Numerator]
+        BLR --> NUMR[Rising Numerator]
+        SM --> NUMH
+        MM --> NUMH
         AG --> DEN[Denominator<br/>age^gravity]
-        NUM --> SC[Score = Num / Den]
-        DEN --> SC
+        NUMH --> SCH[Hot Score]
+        NUMR --> SCR[Rising Score]
+        DEN --> SCH
+        DEN --> SCR
     end
 ```
 
@@ -131,36 +155,53 @@ flowchart LR
 
 ### Core Formulas
 
-#### Hot Right Now Score
+#### Hot Right Now Score (v2)
 ```
-score = (weighted_velocity × size_multiplier × maintenance_multiplier) / (age_hours + 2)^1.5
-```
-
-#### Rising Stars Score
-```
-score = (weighted_growth_pct × size_multiplier × maintenance_multiplier) / (age_hours + 2)^1.8
+hot_signal = (0.85 × download_velocity) + (0.15 × update_boost)
+score = (hot_signal × size_multiplier × maintenance_multiplier) / (age_hours + 2)^1.5
 ```
 
-### Constants
+#### Rising Stars Score (v2)
+```
+relative_growth = downloads_gained_24h / total_downloads
+rising_signal = (0.7 × relative_growth) + (0.3 × maintenance_multiplier)
+score = rising_signal / (age_hours + 2)^1.8
+```
+
+**Note:** Size multiplier is NOT applied to Rising Stars in v2. Relative growth naturally favors smaller addons without needing artificial scaling.
+
+### Constants (v2)
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `DownloadWeight` | 0.7 | Weight for download signal in blend |
-| `ThumbsWeight` | 0.2 | Weight for thumbs up signal in blend |
-| `UpdateWeight` | 0.1 | Weight for update boost in blend |
+| `HotDownloadWeight` | 0.85 | Weight for download velocity in Hot signal |
+| `HotUpdateWeight` | 0.15 | Weight for update boost in Hot signal |
+| `RisingGrowthWeight` | 0.7 | Weight for relative growth in Rising signal |
+| `RisingMaintenanceWeight` | 0.3 | Weight for maintenance in Rising signal |
 | `UpdateBoost` | 10.0 | Boost value when addon has update in last 7 days |
 | `HotGravity` | 1.5 | Decay exponent for Hot Right Now |
 | `RisingGravity` | 1.8 | Decay exponent for Rising Stars |
 | `AgeOffset` | 2.0 | Added to age to prevent division by zero |
 
-### Signal Blend Calculation
+**Removed in v2:**
+- `ThumbsWeight` (0.2) - Thumbs up data removed due to low signal quality
 
+### Signal Blend Calculation (v2)
+
+#### Hot Right Now
 ```go
-weighted_signal = (0.7 × download_signal) + (0.2 × thumbs_signal) + (0.1 × update_boost)
+hot_signal = (0.85 × download_velocity) + (0.15 × update_boost)
 ```
+- Uses download velocity (downloads per hour)
+- Update boost = 10.0 if addon updated in last 7 days, else 0
 
-- **Hot Right Now**: Uses velocity (units per hour)
-- **Rising Stars**: Uses growth percentage
+#### Rising Stars
+```go
+relative_growth = downloads_gained_24h / total_downloads
+rising_signal = (0.7 × relative_growth) + (0.3 × maintenance_multiplier)
+```
+- Uses relative growth percentage (0-1 scale)
+- Maintenance multiplier blended into signal (not applied separately)
 
 ### Confidence-Based Adaptive Windows
 
@@ -181,7 +222,7 @@ This ensures:
 
 ### Size Multiplier (Logarithmic Scale)
 
-Prevents tiny addons from dominating with percentage-based metrics:
+**Applied to Hot Right Now only.** Prevents tiny addons from dominating velocity-based metrics:
 
 ```go
 multiplier = log₁₀(downloads + 1) / log₁₀(percentile_95 + 1)
@@ -201,6 +242,8 @@ Example values (assuming 95th percentile = 500,000):
 
 The 95th percentile is recalculated daily during sync.
 
+**Not applied to Rising Stars in v2:** Relative growth calculation naturally favors smaller addons without needing artificial scaling.
+
 ### Maintenance Multiplier (Update Frequency)
 
 Rewards active maintenance based on updates in the last 90 days:
@@ -212,6 +255,32 @@ Rewards active maintenance based on updates in the last 90 days:
 | Occasional | 31-60 days | 1.05× |
 | Baseline | 61-90 days | 1.00× |
 | Stale/abandoned | No updates | 0.95× |
+
+### Position Tracking (v2)
+
+Addon Radar tracks trending positions over time to show rank changes:
+
+**trending_rank_history Table:**
+- Records top 20 hot and rising ranks hourly
+- 7-day retention window (automatic cleanup)
+- Enables rank_change_24h and rank_change_7d calculations
+
+**API Response:**
+```json
+{
+  "id": 123,
+  "name": "Example Addon",
+  "trending_rank": 5,
+  "rank_change_24h": -2,   // Moved up 2 positions
+  "rank_change_7d": +10,   // Moved down 10 positions over week
+  "hot_score": 123.45
+}
+```
+
+**Rank Change Calculation:**
+- Negative = improved rank (moved up)
+- Positive = worse rank (moved down)
+- NULL = new to trending or no data for period
 
 ### Eligibility Thresholds
 
@@ -230,7 +299,7 @@ Rewards active maintenance based on updates in the last 90 days:
 
 ### Database Schema
 
-#### trending_scores Table
+#### trending_scores Table (v2)
 
 Caches pre-calculated scores for fast API responses:
 
@@ -244,9 +313,7 @@ CREATE TABLE trending_scores (
 
     -- Intermediate values (for debugging/analysis)
     download_velocity DECIMAL(15,5) DEFAULT 0,
-    thumbs_velocity DECIMAL(15,5) DEFAULT 0,
     download_growth_pct DECIMAL(10,5) DEFAULT 0,
-    thumbs_growth_pct DECIMAL(10,5) DEFAULT 0,
     size_multiplier DECIMAL(5,4) DEFAULT 1.0,
     maintenance_multiplier DECIMAL(5,4) DEFAULT 1.0,
 
@@ -261,6 +328,34 @@ CREATE TABLE trending_scores (
 CREATE INDEX idx_trending_hot ON trending_scores(hot_score DESC) WHERE hot_score > 0;
 CREATE INDEX idx_trending_rising ON trending_scores(rising_score DESC) WHERE rising_score > 0;
 ```
+
+**Removed in v2:**
+- `thumbs_velocity` - Thumbs up signal removed
+- `thumbs_growth_pct` - Thumbs up signal removed
+
+#### trending_rank_history Table (v2)
+
+Tracks trending positions over time:
+
+```sql
+CREATE TABLE trending_rank_history (
+    id BIGSERIAL PRIMARY KEY,
+    addon_id INTEGER NOT NULL REFERENCES addons(id) ON DELETE CASCADE,
+    category VARCHAR(10) NOT NULL,  -- 'hot' or 'rising'
+    rank INTEGER NOT NULL,           -- 1-20
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_rank_history_addon_category_time
+    ON trending_rank_history(addon_id, category, recorded_at DESC);
+CREATE INDEX idx_rank_history_recorded_at
+    ON trending_rank_history(recorded_at DESC);
+```
+
+**Features:**
+- Records top 20 rankings hourly
+- 7-day retention (automatic cleanup)
+- Supports rank change calculations (24h, 7d)
 
 #### snapshots Table
 
@@ -311,7 +406,42 @@ Potential improvements to explore:
 
 | Date | Change |
 |------|--------|
+| 2025-12-22 | **v2 Algorithm Deployed** - Removed thumbs signal, added relative growth for Rising, added position tracking |
 | 2025-12-17 | Initial documentation created |
 | 2025-12-11 | Bulk query optimization implemented (10+ min → <30s) |
 | 2025-12-10 | Algorithm implemented and deployed |
 | 2025-12-08 | Original design completed |
+
+## Version History
+
+### v2.0 (2025-12-22)
+
+**Key Changes:**
+1. **Removed thumbs_up signal** - Data quality was too low (most addons had 0-1 thumbs up)
+2. **Hot Right Now formula updated:**
+   - Signal: 85% download velocity + 15% update boost (was 70/20/10)
+   - Removed thumbs signal entirely
+3. **Rising Stars formula updated:**
+   - Now uses **relative growth** (downloads_gained / total_downloads)
+   - Signal: 70% relative growth + 30% maintenance multiplier
+   - **Removed size multiplier** - Relative growth naturally favors smaller addons
+4. **Position tracking added:**
+   - New `trending_rank_history` table
+   - Records top 20 hot and rising ranks hourly
+   - 7-day retention window
+   - API returns rank_change_24h and rank_change_7d
+
+**Why These Changes:**
+- Thumbs up data was essentially useless - most addons had 0-1 thumbs
+- Relative growth better surfaces lesser-known addons gaining traction
+- Position tracking shows trending movement over time
+- Simplified formulas while improving signal quality
+
+### v1.0 (2025-12-10)
+
+Initial implementation with:
+- Hot Right Now and Rising Stars categories
+- Multi-signal blend (downloads, thumbs, updates)
+- Size multiplier for both categories
+- Maintenance multiplier
+- Confidence-based adaptive time windows
