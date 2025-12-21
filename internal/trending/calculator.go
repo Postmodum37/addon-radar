@@ -86,6 +86,24 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 		slog.Warn("clear rising age failed", "err", err)
 	}
 
+	// Step 7: Record rank history
+	hotAddons, err := c.db.ListHotAddons(ctx, 20)
+	if err != nil {
+		return fmt.Errorf("list hot addons for history: %w", err)
+	}
+	risingAddons, err := c.db.ListRisingAddons(ctx, 20)
+	if err != nil {
+		return fmt.Errorf("list rising addons for history: %w", err)
+	}
+	if err := c.recordRankHistory(ctx, hotAddons, risingAddons); err != nil {
+		return fmt.Errorf("record rank history: %w", err)
+	}
+
+	// Step 8: Cleanup old history
+	if err := c.cleanupOldRankHistory(ctx); err != nil {
+		slog.Warn("failed to cleanup rank history", "error", err)
+	}
+
 	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
 	return nil
 }
@@ -241,4 +259,45 @@ func (c *Calculator) upsertScore(ctx context.Context, addonID int32, hotScore, r
 		FirstHotAt:            firstHotAt,
 		FirstRisingAt:         firstRisingAt,
 	})
+}
+
+func (c *Calculator) recordRankHistory(ctx context.Context, hotAddons []database.ListHotAddonsRow, risingAddons []database.ListRisingAddonsRow) error {
+	// Record hot addon ranks
+	for i, addon := range hotAddons {
+		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
+			AddonID:  addon.ID,
+			Category: "hot",
+			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:    addon.HotScore,
+		})
+		if err != nil {
+			return fmt.Errorf("insert hot rank history: %w", err)
+		}
+	}
+
+	// Record rising addon ranks
+	for i, addon := range risingAddons {
+		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
+			AddonID:  addon.ID,
+			Category: "rising",
+			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:    addon.RisingScore,
+		})
+		if err != nil {
+			return fmt.Errorf("insert rising rank history: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Calculator) cleanupOldRankHistory(ctx context.Context) error {
+	deleted, err := c.db.DeleteOldRankHistory(ctx)
+	if err != nil {
+		return fmt.Errorf("delete old rank history: %w", err)
+	}
+	if deleted > 0 {
+		slog.Info("cleaned up old rank history", "deleted", deleted)
+	}
+	return nil
 }
