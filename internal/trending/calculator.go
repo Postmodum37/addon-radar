@@ -26,27 +26,49 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	slog.Info("starting trending calculation")
 	start := time.Now()
 
-	// Step 1: Get 95th percentile
-	percentile95, err := c.db.GetDownloadPercentile(ctx)
+	// Step 1: Load all data
+	percentile95, scoreMap, updateMap, allStats, err := c.loadAllData(ctx)
 	if err != nil {
 		return err
+	}
+
+	// Step 2: Calculate and upsert scores
+	processed := c.processAllAddons(ctx, allStats, percentile95, scoreMap, updateMap)
+
+	// Step 3: Clear ages for dropped addons
+	c.clearDroppedAddonAges(ctx)
+
+	// Step 4: Record and cleanup history
+	if err := c.recordAndCleanupHistory(ctx); err != nil {
+		return err
+	}
+
+	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
+	return nil
+}
+
+func (c *Calculator) loadAllData(ctx context.Context) (float64, map[int32]database.GetAllTrendingScoresRow, map[int32]int32, []database.GetAllSnapshotStatsRow, error) {
+	// Get 95th percentile
+	percentile95, err := c.db.GetDownloadPercentile(ctx)
+	if err != nil {
+		return 0, nil, nil, nil, err
 	}
 	if percentile95 <= 0 {
 		percentile95 = 500000
 	}
 	slog.Info("percentile", "p95", percentile95)
 
-	// Step 2: Bulk fetch all snapshot stats (1 query instead of 2N)
+	// Bulk fetch all snapshot stats
 	allStats, err := c.db.GetAllSnapshotStats(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	slog.Info("loaded snapshot stats", "count", len(allStats))
 
-	// Step 3: Bulk fetch existing trending scores (1 query instead of N)
+	// Bulk fetch existing trending scores
 	existingScores, err := c.db.GetAllTrendingScores(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	scoreMap := make(map[int32]database.GetAllTrendingScoresRow)
 	for _, s := range existingScores {
@@ -54,10 +76,10 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	}
 	slog.Info("loaded existing scores", "count", len(existingScores))
 
-	// Step 4: Bulk fetch update counts (1 query instead of N)
+	// Bulk fetch update counts
 	updateCounts, err := c.db.CountAllRecentFileUpdates(ctx)
 	if err != nil {
-		return err
+		return 0, nil, nil, nil, err
 	}
 	updateMap := make(map[int32]int32)
 	for _, u := range updateCounts {
@@ -65,7 +87,10 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 	}
 	slog.Info("loaded update counts", "count", len(updateCounts))
 
-	// Step 5: Calculate and upsert scores
+	return percentile95, scoreMap, updateMap, allStats, nil
+}
+
+func (c *Calculator) processAllAddons(ctx context.Context, allStats []database.GetAllSnapshotStatsRow, percentile95 float64, scoreMap map[int32]database.GetAllTrendingScoresRow, updateMap map[int32]int32) int {
 	processed := 0
 	for _, stat := range allStats {
 		if err := c.calculateAndUpsert(ctx, stat, percentile95, scoreMap, updateMap); err != nil {
@@ -77,16 +102,19 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 			slog.Info("progress", "processed", processed, "total", len(allStats))
 		}
 	}
+	return processed
+}
 
-	// Step 6: Clear ages for dropped addons
+func (c *Calculator) clearDroppedAddonAges(ctx context.Context) {
 	if err := c.db.ClearTrendingAgeForDroppedAddons(ctx); err != nil {
 		slog.Warn("clear hot age failed", "err", err)
 	}
 	if err := c.db.ClearRisingAgeForDroppedAddons(ctx); err != nil {
 		slog.Warn("clear rising age failed", "err", err)
 	}
+}
 
-	// Step 7: Record rank history
+func (c *Calculator) recordAndCleanupHistory(ctx context.Context) error {
 	hotAddons, err := c.db.ListHotAddons(ctx, 20)
 	if err != nil {
 		return fmt.Errorf("list hot addons for history: %w", err)
@@ -99,12 +127,9 @@ func (c *Calculator) CalculateAll(ctx context.Context) error {
 		return fmt.Errorf("record rank history: %w", err)
 	}
 
-	// Step 8: Cleanup old history
 	if err := c.cleanupOldRankHistory(ctx); err != nil {
 		slog.Warn("failed to cleanup rank history", "error", err)
 	}
-
-	slog.Info("trending calculation complete", "duration", time.Since(start), "processed", processed)
 	return nil
 }
 
