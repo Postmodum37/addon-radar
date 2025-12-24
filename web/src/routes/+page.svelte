@@ -23,7 +23,7 @@
 	{#if data.hot.length > 0}
 		<div class="addon-grid">
 			{#each data.hot as addon}
-				<AddonCard {addon} showScore={true} scoreType="hot" />
+				<AddonCard {addon} showVelocity={true} velocityLabel="day" />
 			{/each}
 		</div>
 	{:else}
@@ -38,7 +38,7 @@
 	{#if data.rising.length > 0}
 		<div class="addon-grid">
 			{#each data.rising as addon}
-				<AddonCard {addon} showScore={true} scoreType="rising" />
+				<AddonCard {addon} showVelocity={true} velocityLabel="day" />
 			{/each}
 		</div>
 	{:else}
