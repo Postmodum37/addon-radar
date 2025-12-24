@@ -26,10 +26,11 @@ type AddonResponse struct {
 
 type TrendingAddonResponse struct {
 	AddonResponse
-	Score         float64 `json:"score"`
-	Rank          int     `json:"rank"`
-	RankChange24h *int    `json:"rank_change_24h"` // nil = new to list
-	RankChange7d  *int    `json:"rank_change_7d"`  // nil = new to list
+	Score            float64 `json:"score"`
+	Rank             int     `json:"rank"`
+	RankChange24h    *int    `json:"rank_change_24h"` // nil = new to list
+	RankChange7d     *int    `json:"rank_change_7d"`  // nil = new to list
+	DownloadVelocity float64 `json:"download_velocity"`
 }
 
 func addonToResponse(a database.Addon) AddonResponse {
@@ -284,6 +285,12 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 				response[i].Score = f8.Float64
 			}
 		}
+		if a.DownloadVelocity.Valid {
+			f8, err := a.DownloadVelocity.Float64Value()
+			if err == nil {
+				response[i].DownloadVelocity = f8.Float64
+			}
+		}
 
 		// Add rank changes if available
 		if rc, ok := rankChangeMap[a.ID]; ok {
@@ -351,6 +358,12 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 			f8, err := a.RisingScore.Float64Value()
 			if err == nil {
 				response[i].Score = f8.Float64
+			}
+		}
+		if a.DownloadVelocity.Valid {
+			f8, err := a.DownloadVelocity.Float64Value()
+			if err == nil {
+				response[i].DownloadVelocity = f8.Float64
 			}
 		}
 

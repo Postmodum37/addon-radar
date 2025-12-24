@@ -158,7 +158,7 @@ ON CONFLICT (addon_id) DO UPDATE SET
 SELECT * FROM trending_scores WHERE addon_id = $1;
 
 -- name: ListHotAddons :many
-SELECT a.*, t.hot_score
+SELECT a.*, t.hot_score, t.download_velocity
 FROM addons a
 JOIN trending_scores t ON a.id = t.addon_id
 WHERE a.status = 'active'
@@ -168,7 +168,7 @@ ORDER BY t.hot_score DESC
 LIMIT $1;
 
 -- name: ListRisingAddons :many
-SELECT a.*, t.rising_score
+SELECT a.*, t.rising_score, t.download_velocity
 FROM addons a
 JOIN trending_scores t ON a.id = t.addon_id
 WHERE a.status = 'active'

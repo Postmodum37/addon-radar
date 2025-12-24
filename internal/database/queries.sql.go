@@ -915,7 +915,7 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 }
 
 const listHotAddons = `-- name: ListHotAddons :many
-SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.hot_score
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.hot_score, t.download_velocity
 FROM addons a
 JOIN trending_scores t ON a.id = t.addon_id
 WHERE a.status = 'active'
@@ -948,6 +948,7 @@ type ListHotAddonsRow struct {
 	Rating            pgtype.Numeric     `json:"rating"`
 	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
 	HotScore          pgtype.Numeric     `json:"hot_score"`
+	DownloadVelocity  pgtype.Numeric     `json:"download_velocity"`
 }
 
 func (q *Queries) ListHotAddons(ctx context.Context, limit int32) ([]ListHotAddonsRow, error) {
@@ -982,6 +983,7 @@ func (q *Queries) ListHotAddons(ctx context.Context, limit int32) ([]ListHotAddo
 			&i.Rating,
 			&i.LatestFileDate,
 			&i.HotScore,
+			&i.DownloadVelocity,
 		); err != nil {
 			return nil, err
 		}
@@ -994,7 +996,7 @@ func (q *Queries) ListHotAddons(ctx context.Context, limit int32) ([]ListHotAddo
 }
 
 const listRisingAddons = `-- name: ListRisingAddons :many
-SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.rising_score
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.rising_score, t.download_velocity
 FROM addons a
 JOIN trending_scores t ON a.id = t.addon_id
 WHERE a.status = 'active'
@@ -1034,6 +1036,7 @@ type ListRisingAddonsRow struct {
 	Rating            pgtype.Numeric     `json:"rating"`
 	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
 	RisingScore       pgtype.Numeric     `json:"rising_score"`
+	DownloadVelocity  pgtype.Numeric     `json:"download_velocity"`
 }
 
 func (q *Queries) ListRisingAddons(ctx context.Context, limit int32) ([]ListRisingAddonsRow, error) {
@@ -1068,6 +1071,7 @@ func (q *Queries) ListRisingAddons(ctx context.Context, limit int32) ([]ListRisi
 			&i.Rating,
 			&i.LatestFileDate,
 			&i.RisingScore,
+			&i.DownloadVelocity,
 		); err != nil {
 			return nil, err
 		}
