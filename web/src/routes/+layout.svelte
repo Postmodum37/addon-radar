@@ -1,5 +1,6 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -15,15 +16,7 @@
 <header>
 	<nav>
 		<a href="/" class="logo">Addon Radar</a>
-		<div class="search-wrapper">
-			<form action="/search" method="get" class="search-form">
-				<svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="11" cy="11" r="8"></circle>
-					<path d="m21 21-4.3-4.3"></path>
-				</svg>
-				<input type="search" name="q" placeholder="Search addons..." aria-label="Search addons" />
-			</form>
-		</div>
+		<SearchAutocomplete />
 	</nav>
 </header>
 
@@ -59,44 +52,6 @@
 	.logo:hover {
 		text-decoration: none;
 		opacity: 0.9;
-	}
-
-	.search-wrapper {
-		flex: 1;
-		max-width: 400px;
-	}
-
-	.search-form {
-		position: relative;
-		display: flex;
-		align-items: center;
-	}
-
-	.search-icon {
-		position: absolute;
-		left: 12px;
-		color: var(--color-text-muted);
-		pointer-events: none;
-	}
-
-	.search-form input {
-		width: 100%;
-		padding: 0.625rem 1rem 0.625rem 2.5rem;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		background: var(--color-surface);
-		color: var(--color-text);
-		font-size: 0.9rem;
-	}
-
-	.search-form input::placeholder {
-		color: var(--color-text-muted);
-	}
-
-	.search-form input:focus {
-		outline: none;
-		border-color: var(--color-accent);
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 	}
 
 	main {
