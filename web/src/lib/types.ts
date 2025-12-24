@@ -14,6 +14,10 @@ export interface Addon {
 
 export interface TrendingAddon extends Addon {
 	score: number;
+	rank: number;
+	rank_change_24h: number;
+	rank_change_7d: number;
+	download_velocity: number;
 }
 
 export interface Snapshot {
@@ -21,6 +25,12 @@ export interface Snapshot {
 	download_count: number;
 	thumbs_up_count?: number;
 	popularity_rank?: number;
+}
+
+export interface DailySnapshot {
+	date: string;
+	download_count: number;
+	downloads_delta: number;
 }
 
 export interface Category {

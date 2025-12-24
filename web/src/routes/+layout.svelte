@@ -1,5 +1,6 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -7,14 +8,15 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </svelte:head>
 
 <header>
 	<nav>
 		<a href="/" class="logo">Addon Radar</a>
-		<form action="/search" method="get" class="search-form">
-			<input type="search" name="q" placeholder="Search addons..." aria-label="Search addons" />
-		</form>
+		<SearchAutocomplete />
 	</nav>
 </header>
 
@@ -28,8 +30,7 @@
 
 <style>
 	header {
-		background: var(--color-surface);
-		border-bottom: 1px solid var(--color-border);
+		background: var(--color-header);
 		padding: 1rem;
 	}
 
@@ -43,33 +44,21 @@
 
 	.logo {
 		font-size: 1.5rem;
-		font-weight: bold;
-		color: var(--color-accent);
+		font-weight: 700;
+		color: #FFFFFF;
+		letter-spacing: -0.025em;
 	}
 
 	.logo:hover {
 		text-decoration: none;
-	}
-
-	.search-form {
-		flex: 1;
-		max-width: 400px;
-	}
-
-	.search-form input {
-		width: 100%;
-		padding: 0.5rem 1rem;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		background: var(--color-bg);
-		color: var(--color-text);
+		opacity: 0.9;
 	}
 
 	main {
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 2rem 1rem;
-		min-height: calc(100vh - 200px);
+		min-height: calc(100vh - 180px);
 	}
 
 	footer {
@@ -78,5 +67,6 @@
 		padding: 2rem 1rem;
 		text-align: center;
 		color: var(--color-text-muted);
+		font-size: 0.875rem;
 	}
 </style>
