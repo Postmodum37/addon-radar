@@ -4,10 +4,12 @@
 
 	let {
 		addon,
+		showRank = false,
 		showVelocity = false,
 		velocityLabel = 'day'
 	}: {
 		addon: TrendingAddon | Addon;
+		showRank?: boolean;
 		showVelocity?: boolean;
 		velocityLabel?: 'day' | 'week';
 	} = $props();
@@ -23,15 +25,35 @@
 		return `+${Math.round(velocity)}`;
 	}
 
+	function formatTimeAgo(dateStr: string | undefined): string {
+		if (!dateStr) return '';
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+		if (diffDays === 0) return 'today';
+		if (diffDays === 1) return '1d ago';
+		if (diffDays < 7) return `${diffDays}d ago`;
+		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+		return `${Math.floor(diffDays / 30)}mo ago`;
+	}
+
+	function truncateSummary(text: string | undefined, maxLen = 60): string {
+		if (!text) return '';
+		if (text.length <= maxLen) return text;
+		return text.slice(0, maxLen).trimEnd() + '...';
+	}
+
 	const isTrending = $derived('rank' in addon);
-	const rankChange = $derived(isTrending ? (addon as TrendingAddon).rank_change_24h : 0);
-	const velocity = $derived(isTrending ? (addon as TrendingAddon).download_velocity : 0);
-	const isNew = $derived(isTrending && (addon as TrendingAddon).rank === 1 && rankChange === 0);
+	const trendingAddon = $derived(isTrending ? (addon as TrendingAddon) : null);
+	const rankChange = $derived(trendingAddon?.rank_change_24h ?? null);
+	const velocity = $derived(trendingAddon?.download_velocity ?? 0);
+	const isNew = $derived(isTrending && rankChange === null);
 </script>
 
 <a href="/addon/{addon.slug}" class="card">
-	{#if isTrending}
-		<RankBadge {rankChange} {isNew} />
+	{#if showRank && trendingAddon}
+		<div class="rank">#{trendingAddon.rank}</div>
 	{/if}
 
 	<div class="logo">
@@ -42,15 +64,30 @@
 		{/if}
 	</div>
 
-	<div class="info">
-		<h3>{addon.name}</h3>
+	<div class="content">
+		<div class="header">
+			<h3>{addon.name}</h3>
+			{#if isTrending}
+				<RankBadge {rankChange} {isNew} />
+			{/if}
+		</div>
 		{#if addon.author_name}
 			<p class="author">by {addon.author_name}</p>
 		{/if}
+		{#if addon.summary}
+			<p class="summary">{truncateSummary(addon.summary)}</p>
+		{/if}
 		<p class="stats">
-			<span class="downloads">{formatDownloads(addon.download_count)} downloads</span>
+			<span>{formatDownloads(addon.download_count)}</span>
+			<span class="separator">·</span>
+			<span>{formatDownloads(addon.thumbs_up_count)} likes</span>
 			{#if showVelocity && velocity > 0}
+				<span class="separator">·</span>
 				<span class="velocity">{formatVelocity(velocity)}/{velocityLabel}</span>
+			{/if}
+			{#if addon.last_updated_at}
+				<span class="separator">·</span>
+				<span>{formatTimeAgo(addon.last_updated_at)}</span>
 			{/if}
 		</p>
 	</div>
@@ -58,10 +95,9 @@
 
 <style>
 	.card {
-		position: relative;
 		display: flex;
-		align-items: center;
-		gap: 1rem;
+		align-items: flex-start;
+		gap: 0.875rem;
 		padding: 1rem;
 		background: var(--color-surface);
 		border-radius: 12px;
@@ -76,10 +112,20 @@
 		text-decoration: none;
 	}
 
+	.rank {
+		flex-shrink: 0;
+		width: 2.5rem;
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		text-align: center;
+		padding-top: 0.25rem;
+	}
+
 	.logo {
 		flex-shrink: 0;
-		width: 56px;
-		height: 56px;
+		width: 48px;
+		height: 48px;
 	}
 
 	.logo img {
@@ -101,15 +147,21 @@
 		color: var(--color-text-muted);
 	}
 
-	.info {
+	.content {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.125rem;
 	}
 
 	h3 {
 		font-size: 1rem;
 		font-weight: 600;
-		margin-bottom: 0.125rem;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -122,12 +174,26 @@
 		margin-bottom: 0.25rem;
 	}
 
-	.stats {
+	.summary {
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
+		margin-bottom: 0.25rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.stats {
+		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.25rem;
+	}
+
+	.separator {
+		color: var(--color-border);
 	}
 
 	.velocity {
