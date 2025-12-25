@@ -10,9 +10,51 @@
   - `/docs/TODO.md` - Task tracking
   - `/docs/ALGORITHM.md` - Trending algorithm details
   - `/docs/plans/*` - Design documents, feature specs and plans
+  - `/docs/solutions/*` - Compounded knowledge from solved problems
 - Focus on the unique trendiness algorithm as the main differentiator
 - Create plans and design docs in docs/plans/
 - Always develop new features in feature branches
+
+## Development Workflow
+
+Follow this workflow for feature development:
+
+```
+plan → review-plan → work → review → compound
+```
+
+| Stage | Skill/Command | Purpose |
+|-------|---------------|---------|
+| **Plan** | `/workflows:plan` | Create implementation plan in `docs/plans/` |
+| **Review Plan** | `/plan_review` | Have multiple agents review the plan in parallel |
+| **Work** | `/workflows:work` | Execute the plan with TodoWrite tracking |
+| **Review** | `/workflows:review` | Multi-agent code review of changes |
+| **Compound** | `/workflows:compound` | Document solution in `docs/solutions/` |
+
+### Plan Phase
+- Create a plan document in `docs/plans/YYYY-MM-DD-feature-name.md`
+- Include: overview, files to modify, implementation steps, acceptance criteria
+- Keep plans focused and actionable
+
+### Review Plan Phase
+- Run `/plan_review docs/plans/your-plan.md`
+- Reviewers: DHH (Rails philosophy), Kieran (quality bar), Simplicity (YAGNI)
+- Address feedback before implementing
+
+### Work Phase
+- Run `/workflows:work docs/plans/your-plan.md`
+- Creates feature branch, TodoWrite tasks, executes implementation
+- Test continuously, mark tasks complete as you go
+
+### Review Phase
+- Run `/workflows:review` after implementation
+- Parallel code reviews for quality, security, performance
+- Fix P1/P2 issues before merging
+
+### Compound Phase
+- Run `/workflows:compound` after solving a problem
+- Documents solution in `docs/solutions/` for future reference
+- Captures patterns, prevention strategies, verification checklists
 
 ## Project Overview
 
@@ -40,6 +82,12 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 - Paginated `/trending/hot` and `/trending/rising` pages
 - Search autocomplete with dropdown results
 - Weekly trend chart on addon detail pages
+
+**Frontend V2.1 Features** (PR #12, Dec 25):
+- Dark mode support with theme toggle in header
+- Theme persists in localStorage, respects system preference
+- FOUC prevention via inline script
+- System theme change listener for auto-switching
 
 ## Tech Stack
 
@@ -82,7 +130,8 @@ addon-radar/
 ├── Dockerfile.sync         # Sync service
 ├── Dockerfile.api          # API service
 ├── railway.toml            # Service configs
-└── docs/plans/             # Design documents
+├── docs/plans/             # Design documents
+└── docs/solutions/         # Compounded knowledge
 ```
 
 ## API Endpoints
@@ -282,6 +331,7 @@ bun run check         # Run svelte-check
 | `2025-12-22-trending-algorithm-v2-implementation.md` | **Complete** |
 | `2025-12-24-frontend-redesign.md` | **Complete** |
 | `2025-12-24-frontend-redesign-implementation.md` | **Complete** |
+| `2025-12-25-frontend-design-update.md` | **Complete** |
 
 ## Serena MCP
 
@@ -448,6 +498,53 @@ mcp__plugin_playwright_playwright__browser_fill_form(
 - Use `browser_install` if you get errors about browser not being installed
 - Close the browser with `browser_close` when done to free resources
 - `browser_wait_for` can wait for text to appear or a timeout
+
+## Compound Engineering Plugin
+
+The Compound Engineering plugin provides workflow skills for structured development. Use these skills to follow the development workflow.
+
+### Key Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `/workflows:plan` | Create structured implementation plans |
+| `/plan_review` | Parallel plan review by multiple agents |
+| `/workflows:work` | Execute plans with tracking |
+| `/workflows:review` | Multi-agent code review |
+| `/workflows:compound` | Document solutions for future reference |
+
+### Agent Types
+
+The plugin provides specialized agents for different review perspectives:
+
+| Agent | Focus |
+|-------|-------|
+| `dhh-rails-reviewer` | Rails philosophy, simplicity, no over-engineering |
+| `kieran-rails-reviewer` | High quality bar, conventions, patterns |
+| `code-simplicity-reviewer` | YAGNI, minimal changes, avoid complexity |
+| `performance-oracle` | Performance bottlenecks, scalability |
+| `security-sentinel` | Security vulnerabilities, OWASP |
+
+### Solutions Directory
+
+After solving non-trivial problems, use `/workflows:compound` to create solution documents:
+
+```
+docs/solutions/
+├── ui-implementation/
+│   └── sveltekit-dark-mode.md    # SSR theming patterns
+├── api/
+│   └── ...
+└── database/
+    └── ...
+```
+
+Solution documents include:
+- Problem statement and symptoms
+- Root cause analysis
+- Complete code solution
+- Prevention strategies
+- Verification checklist
 
 ## External Resources
 
