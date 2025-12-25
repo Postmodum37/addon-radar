@@ -389,6 +389,120 @@ mcp__tavily__tavily-search(
 - Use `include_domains` to restrict search to specific sites
 - For time-sensitive queries, use `time_range="week"` or `"month"`
 
+## Greptile MCP
+
+Greptile provides PR review, code review, and custom context management for repositories. Use it for automated code reviews and tracking review comments.
+
+### When to Use Greptile
+- **PR reviews**: Trigger and manage code reviews on pull requests
+- **Review comments**: List and search Greptile-generated review comments
+- **Custom context**: Create organization-specific review rules and patterns
+- **PR management**: List and inspect merge requests/pull requests
+
+### Key Greptile Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__plugin_greptile_greptile__list_pull_requests` | List PRs with optional filters |
+| `mcp__plugin_greptile_greptile__get_merge_request` | Get detailed PR info including review analysis |
+| `mcp__plugin_greptile_greptile__trigger_code_review` | Trigger a Greptile code review on a PR |
+| `mcp__plugin_greptile_greptile__list_merge_request_comments` | Get all comments on a PR |
+| `mcp__plugin_greptile_greptile__search_greptile_comments` | Search Greptile review comments |
+| `mcp__plugin_greptile_greptile__list_custom_context` | List organization review rules |
+| `mcp__plugin_greptile_greptile__create_custom_context` | Create new review rules |
+
+### Example Usage
+```
+# List open PRs
+mcp__plugin_greptile_greptile__list_pull_requests(state="open")
+
+# Get PR details with review analysis
+mcp__plugin_greptile_greptile__get_merge_request(
+  name="owner/repo",
+  remote="github",
+  defaultBranch="main",
+  prNumber=10
+)
+
+# Trigger code review
+mcp__plugin_greptile_greptile__trigger_code_review(
+  name="owner/repo",
+  remote="github",
+  prNumber=10
+)
+
+# Search for security-related comments
+mcp__plugin_greptile_greptile__search_greptile_comments(
+  query="security vulnerability"
+)
+```
+
+### Tips
+- Use `state="open"` to filter for active PRs
+- The `get_merge_request` tool shows which review comments have been addressed
+- Custom context rules can be scoped to specific file paths or repositories
+- Greptile comments include code suggestions in ` ```suggestion ` blocks
+
+## Playwright MCP
+
+Playwright MCP provides browser automation for testing, screenshots, and web interaction. Use it for E2E testing, visual verification, and scraping.
+
+### When to Use Playwright
+- **Visual testing**: Take screenshots to verify UI changes
+- **E2E testing**: Automate browser interactions for testing flows
+- **Form filling**: Automate form submissions and interactions
+- **Debugging**: Inspect page state, console messages, network requests
+
+### Key Playwright Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__plugin_playwright_playwright__browser_navigate` | Navigate to a URL |
+| `mcp__plugin_playwright_playwright__browser_snapshot` | Get accessibility tree (better than screenshot for actions) |
+| `mcp__plugin_playwright_playwright__browser_take_screenshot` | Capture visual screenshot |
+| `mcp__plugin_playwright_playwright__browser_click` | Click on elements |
+| `mcp__plugin_playwright_playwright__browser_type` | Type text into inputs |
+| `mcp__plugin_playwright_playwright__browser_fill_form` | Fill multiple form fields |
+| `mcp__plugin_playwright_playwright__browser_console_messages` | Get console output |
+| `mcp__plugin_playwright_playwright__browser_network_requests` | Inspect network activity |
+| `mcp__plugin_playwright_playwright__browser_close` | Close the browser |
+
+### Example Usage
+```
+# Navigate to page
+mcp__plugin_playwright_playwright__browser_navigate(
+  url="https://addon-radar.com"
+)
+
+# Take screenshot
+mcp__plugin_playwright_playwright__browser_take_screenshot(
+  filename="homepage.png"
+)
+
+# Get page structure for interaction
+mcp__plugin_playwright_playwright__browser_snapshot()
+
+# Click element (ref from snapshot)
+mcp__plugin_playwright_playwright__browser_click(
+  element="Search button",
+  ref="button[name='search']"
+)
+
+# Fill form
+mcp__plugin_playwright_playwright__browser_fill_form(
+  fields=[
+    {"name": "Search", "type": "textbox", "ref": "input#search", "value": "Details"}
+  ]
+)
+```
+
+### Tips
+- Use `browser_snapshot` instead of screenshots when you need to interact with elements
+- The snapshot returns element refs needed for click/type actions
+- Use `browser_install` if you get errors about browser not being installed
+- Close the browser with `browser_close` when done to free resources
+- `browser_wait_for` can wait for text to appear or a timeout
+
 ## External Resources
 
 - [CurseForge Addons](https://www.curseforge.com/wow)
