@@ -4,7 +4,7 @@
 
 A website that helps World of Warcraft players discover trending and rising addons for **Retail** version. The main focus is a unique trendiness algorithm that surfaces both established hot addons and lesser-known rising stars.
 
-## Current Status: Frontend V3 ✅
+## Current Status: Frontend Redesign V2 ✅
 
 **Live Production:**
 - **Frontend**: https://addon-radar.com
@@ -12,13 +12,13 @@ A website that helps World of Warcraft players discover trending and rising addo
 - **Sync Job**: Running hourly via Railway cron
 - **Data**: 12,424 Retail addons with hourly snapshots
 
-**Frontend V3 Features (Dec 25, 2025):**
-- Renamed categories: "Trending" and "Rising" (clearer naming)
-- Featured addon cards for top 3 (larger, more prominent)
-- Enhanced cards with rank position, summary, likes, update time
-- RankBadge shows all states: rising/falling/unchanged/new
-- Server-side pagination with meta object (page, per_page, total, total_pages)
-- Fixed rank history bug for accurate rank change tracking
+**Frontend V2 Features (Dec 24, 2025):**
+- Clean minimal light theme with dark header
+- Download velocity display (+2.3K/day) instead of arbitrary scores
+- Rank change badges (↑5, ↓3) showing position movement
+- Paginated `/trending/hot` and `/trending/rising` pages
+- Search autocomplete with dropdown results
+- Weekly trend chart on addon detail pages
 
 ## Architecture
 
@@ -121,14 +121,6 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Search autocomplete with dropdown results
 - [x] Weekly trend chart on addon detail pages
 - [x] API: Added `download_velocity` to trending responses
-
-### Phase 4.6: Frontend V3 (PR #10) ✅
-- [x] Rename categories: "Hot Right Now" → "Trending", "Rising Stars" → "Rising"
-- [x] Featured addon cards for top 3 (FeaturedAddonCard component)
-- [x] Enhanced AddonCard with rank, summary, likes, update time
-- [x] RankBadge shows all states: rising (green), falling (red), unchanged (gray), new (blue)
-- [x] API: Server-side pagination with page/per_page params and meta object
-- [x] Fix rank history bug: DISTINCT ON pattern for accurate rank changes
 
 ### Phase 5: Polish
 - [ ] Hot addon detection for faster sync

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TrendingAddon, Addon } from '$lib/types';
+	import { formatCount, formatVelocity, formatTimeAgo, truncateText } from '$lib/utils/format';
 	import RankBadge from './RankBadge.svelte';
 
 	let {
@@ -13,36 +14,6 @@
 		showVelocity?: boolean;
 		velocityLabel?: 'day' | 'week';
 	} = $props();
-
-	function formatDownloads(count: number): string {
-		if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-		if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-		return String(count);
-	}
-
-	function formatVelocity(velocity: number): string {
-		if (velocity >= 1_000) return `+${(velocity / 1_000).toFixed(1)}K`;
-		return `+${Math.round(velocity)}`;
-	}
-
-	function formatTimeAgo(dateStr: string | undefined): string {
-		if (!dateStr) return '';
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-		if (diffDays === 0) return 'today';
-		if (diffDays === 1) return '1d ago';
-		if (diffDays < 7) return `${diffDays}d ago`;
-		if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-		return `${Math.floor(diffDays / 30)}mo ago`;
-	}
-
-	function truncateSummary(text: string | undefined, maxLen = 60): string {
-		if (!text) return '';
-		if (text.length <= maxLen) return text;
-		return text.slice(0, maxLen).trimEnd() + '...';
-	}
 
 	const isTrending = $derived('rank' in addon);
 	const trendingAddon = $derived(isTrending ? (addon as TrendingAddon) : null);
@@ -75,12 +46,12 @@
 			<p class="author">by {addon.author_name}</p>
 		{/if}
 		{#if addon.summary}
-			<p class="summary">{truncateSummary(addon.summary)}</p>
+			<p class="summary">{truncateText(addon.summary, 60)}</p>
 		{/if}
 		<p class="stats">
-			<span>{formatDownloads(addon.download_count)}</span>
+			<span>{formatCount(addon.download_count)}</span>
 			<span class="separator">·</span>
-			<span>{formatDownloads(addon.thumbs_up_count)} likes</span>
+			<span>{formatCount(addon.thumbs_up_count)} likes</span>
 			{#if showVelocity && velocity > 0}
 				<span class="separator">·</span>
 				<span class="velocity">{formatVelocity(velocity)}/{velocityLabel}</span>

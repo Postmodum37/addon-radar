@@ -106,40 +106,20 @@ func numericToFloat64(n pgtype.Numeric) float64 {
 	}
 	f8, err := n.Float64Value()
 	if err != nil {
+		slog.Debug("failed to convert numeric to float64", "error", err)
 		return 0
 	}
 	return f8.Float64
 }
 
 func (s *Server) handleListAddons(c *gin.Context) {
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil {
-		page = 1
-	}
-	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	if err != nil {
-		perPage = 20
-	}
+	page, perPage, offset := parsePaginationParams(c)
 	search := c.Query("search")
-
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 20
-	}
-
-	// Validate conversion to int32
-	if perPage > 2147483647 || page > 2147483647 {
-		perPage = 20
-		page = 1
-	}
-
-	offset := (page - 1) * perPage
 	ctx := c.Request.Context()
 
 	var addons []database.Addon
 	var total int64
+	var err error
 
 	if search != "" {
 		// Convert search string to pgtype.Text

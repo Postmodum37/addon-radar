@@ -14,7 +14,15 @@ const API_URL = env.API_URL || import.meta.env.VITE_API_URL || 'http://localhost
 async function fetchApi<T>(path: string): Promise<T | null> {
 	try {
 		const res = await fetch(`${API_URL}${path}`);
-		if (!res.ok) return null;
+		if (!res.ok) {
+			const body = await res.text().catch(() => '');
+			console.error(`API error: ${path}`, {
+				status: res.status,
+				statusText: res.statusText,
+				body: body.slice(0, 200)
+			});
+			return null;
+		}
 		return res.json();
 	} catch (error) {
 		console.error(`API fetch failed: ${path}`, error);

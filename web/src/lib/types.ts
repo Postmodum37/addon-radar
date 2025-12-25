@@ -15,8 +15,8 @@ export interface Addon {
 export interface TrendingAddon extends Addon {
 	score: number;
 	rank: number;
-	rank_change_24h: number;
-	rank_change_7d: number;
+	rank_change_24h: number | null; // null = new to list
+	rank_change_7d: number | null; // null = new to list
 	download_velocity: number;
 }
 

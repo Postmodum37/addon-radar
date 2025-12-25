@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TrendingAddon } from '$lib/types';
+	import { formatCount, formatVelocity, formatUpdatedAgo, truncateText } from '$lib/utils/format';
 	import RankBadge from './RankBadge.svelte';
 
 	let {
@@ -9,36 +10,6 @@
 		addon: TrendingAddon;
 		velocityLabel?: 'day' | 'week';
 	} = $props();
-
-	function formatDownloads(count: number): string {
-		if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-		if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-		return String(count);
-	}
-
-	function formatVelocity(velocity: number): string {
-		if (velocity >= 1_000) return `+${(velocity / 1_000).toFixed(1)}K`;
-		return `+${Math.round(velocity)}`;
-	}
-
-	function formatTimeAgo(dateStr: string | undefined): string {
-		if (!dateStr) return '';
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-		if (diffDays === 0) return 'Updated today';
-		if (diffDays === 1) return 'Updated yesterday';
-		if (diffDays < 7) return `Updated ${diffDays}d ago`;
-		if (diffDays < 30) return `Updated ${Math.floor(diffDays / 7)}w ago`;
-		return `Updated ${Math.floor(diffDays / 30)}mo ago`;
-	}
-
-	function truncateSummary(text: string | undefined, maxLen = 100): string {
-		if (!text) return '';
-		if (text.length <= maxLen) return text;
-		return text.slice(0, maxLen).trimEnd() + '...';
-	}
 
 	const isNew = $derived(addon.rank_change_24h === null);
 </script>
@@ -66,13 +37,13 @@
 	</div>
 
 	{#if addon.summary}
-		<p class="summary">{truncateSummary(addon.summary)}</p>
+		<p class="summary">{truncateText(addon.summary, 100)}</p>
 	{/if}
 
 	<div class="stats">
-		<span>{formatDownloads(addon.download_count)} downloads</span>
+		<span>{formatCount(addon.download_count)} downloads</span>
 		<span class="separator">·</span>
-		<span>{formatDownloads(addon.thumbs_up_count)} likes</span>
+		<span>{formatCount(addon.thumbs_up_count)} likes</span>
 		{#if addon.download_velocity > 0}
 			<span class="separator">·</span>
 			<span class="velocity">{formatVelocity(addon.download_velocity)}/{velocityLabel}</span>
@@ -81,7 +52,7 @@
 
 	<div class="meta">
 		{#if addon.last_updated_at}
-			<span>{formatTimeAgo(addon.last_updated_at)}</span>
+			<span>{formatUpdatedAgo(addon.last_updated_at)}</span>
 		{/if}
 		{#if addon.game_versions && addon.game_versions.length > 0}
 			<span class="separator">·</span>

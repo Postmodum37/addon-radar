@@ -21,7 +21,7 @@
 <section class="trending-section">
 	<div class="section-header">
 		<div>
-			<h2>Trending</h2>
+			<h2>Hot Right Now</h2>
 			<p class="section-desc">Established addons with high download velocity</p>
 		</div>
 		<a href="/trending/hot" class="view-all">View all →</a>
@@ -41,7 +41,7 @@
 <section class="trending-section">
 	<div class="section-header">
 		<div>
-			<h2>Rising</h2>
+			<h2>Rising Stars</h2>
 			<p class="section-desc">Smaller addons gaining traction</p>
 		</div>
 		<a href="/trending/rising" class="view-all">View all →</a>

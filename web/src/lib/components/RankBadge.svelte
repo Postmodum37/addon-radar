@@ -1,28 +1,28 @@
 <script lang="ts">
 	let { rankChange, isNew = false }: { rankChange: number | null; isNew?: boolean } = $props();
 
-	const state = $derived(() => {
-		if (isNew) return 'new';
-		if (rankChange === null) return 'new';
+	function getState(isNew: boolean, rankChange: number | null): 'new' | 'rising' | 'falling' | 'unchanged' {
+		if (isNew || rankChange === null) return 'new';
 		if (rankChange > 0) return 'rising';
 		if (rankChange < 0) return 'falling';
 		return 'unchanged';
-	});
+	}
 
-	const badgeText = $derived(() => {
-		const s = state();
-		if (s === 'new') return 'NEW';
-		if (s === 'rising') return `+${rankChange}`;
-		if (s === 'falling') return `${rankChange}`;
+	function getBadgeText(state: string, rankChange: number | null): string {
+		if (state === 'new') return 'NEW';
+		if (state === 'rising') return `+${rankChange}`;
+		if (state === 'falling') return `${rankChange}`;
 		return '=';
-	});
+	}
 
-	const showBadge = $derived(state() !== 'unchanged');
+	const state = $derived(getState(isNew, rankChange));
+	const badgeText = $derived(getBadgeText(state, rankChange));
+	const showBadge = $derived(state !== 'unchanged');
 </script>
 
 {#if showBadge}
-	<span class="badge {state()}">
-		{badgeText()}
+	<span class="badge {state}">
+		{badgeText}
 	</span>
 {/if}
 
@@ -48,10 +48,5 @@
 	.new {
 		background: var(--color-new-bg);
 		color: var(--color-new);
-	}
-
-	.unchanged {
-		background: var(--color-unchanged-bg);
-		color: var(--color-unchanged);
 	}
 </style>

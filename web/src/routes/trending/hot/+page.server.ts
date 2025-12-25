@@ -1,12 +1,24 @@
+import { error } from '@sveltejs/kit';
 import { getTrendingHot } from '$lib/api';
 import type { PageServerLoad } from './$types';
 
+function parsePageParam(value: string | null): number {
+	if (!value) return 1;
+	const parsed = parseInt(value, 10);
+	return isNaN(parsed) || parsed < 1 ? 1 : parsed;
+}
+
 export const load: PageServerLoad = async ({ url }) => {
-	const page = parseInt(url.searchParams.get('page') || '1', 10);
+	const page = parsePageParam(url.searchParams.get('page'));
 	const result = await getTrendingHot(page, 20);
 
+	if (result === null) {
+		console.error('Trending hot page load failed', { page });
+		throw error(503, 'Unable to load trending data. Please try again later.');
+	}
+
 	return {
-		addons: result?.data ?? [],
-		meta: result?.meta ?? { page: 1, per_page: 20, total: 0, total_pages: 0 }
+		addons: result.data,
+		meta: result.meta
 	};
 };
