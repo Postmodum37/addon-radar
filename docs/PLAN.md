@@ -122,10 +122,13 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Weekly trend chart on addon detail pages
 - [x] API: Added `download_velocity` to trending responses
 
-### Phase 5: Polish
-- [ ] Hot addon detection for faster sync
+### Phase 5: Polish ✅
 - [x] Historical charts (trend chart on detail page)
-- [ ] SEO optimization
+- [x] Dark mode support (PR #12)
+
+**Deferred** (per code review - not needed yet):
+- Hot addon detection (premature optimization)
+- Full SEO optimization (basic SEO in separate PR)
 
 ## Tech Stack
 

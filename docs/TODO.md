@@ -88,16 +88,18 @@
 
 ## Next Steps
 
-### Priority 1: API Enhancements
+### In Progress: Basic Polish (PR pending)
+- [ ] Add robots.txt
+- [ ] Add canonical URLs and og:url meta tags
 - [ ] Add category filtering to `/addons` endpoint
-- [ ] Add sorting options (downloads, updated, name)
-- [ ] Add rate limiting (optional)
 
-### Future Enhancements
-- [ ] Hot addon detection for faster sync
-- [x] Historical charts on addon pages (trend chart)
-- [ ] SEO optimization
+See: `docs/plans/2025-12-25-phase-5-polish.md`
+
+### Future Enhancements (Deferred)
 - [ ] Database snapshot export for local dev
+- [ ] Full sitemap generation (if SEO metrics warrant it)
+- [ ] API sorting options (if user demand emerges)
+- [ ] Hot addon detection (if sync performance becomes an issue)
 
 ## Production URLs
 

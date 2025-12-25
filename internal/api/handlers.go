@@ -115,6 +115,7 @@ func numericToFloat64(n pgtype.Numeric) float64 {
 func (s *Server) handleListAddons(c *gin.Context) {
 	page, perPage, offset := parsePaginationParams(c)
 	search := c.Query("search")
+	categoryStr := c.Query("category")
 	ctx := c.Request.Context()
 
 	var addons []database.Addon
@@ -136,6 +137,26 @@ func (s *Server) handleListAddons(c *gin.Context) {
 			return
 		}
 		total, err = s.db.CountSearchAddons(ctx, searchText)
+	} else if categoryStr != "" {
+		// Filter by category
+		categoryID, parseErr := strconv.ParseInt(categoryStr, 10, 32)
+		if parseErr != nil {
+			// Invalid category - use -1 which will match nothing (lenient behavior)
+			categoryID = -1
+		}
+		categorySlice := []int32{int32(categoryID)} //nolint:gosec // validated via ParseInt
+
+		addons, err = s.db.ListAddonsByCategory(ctx, database.ListAddonsByCategoryParams{
+			Limit:      int32(perPage), //nolint:gosec // perPage validated to be <= 100
+			Offset:     int32(offset),  //nolint:gosec // offset validated via perPage <= 100
+			Categories: categorySlice,
+		})
+		if err != nil {
+			slog.Error("failed to list addons by category", "error", err)
+			respondInternalError(c)
+			return
+		}
+		total, err = s.db.CountAddonsByCategory(ctx, categorySlice)
 	} else {
 		addons, err = s.db.ListAddons(ctx, database.ListAddonsParams{
 			Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100

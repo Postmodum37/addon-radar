@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import favicon from '$lib/assets/favicon.svg';
 	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -9,6 +10,9 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<link rel="canonical" href="https://addon-radar.com{$page.url.pathname}" />
+	<meta property="og:url" content="https://addon-radar.com{$page.url.pathname}" />
+	<meta property="og:site_name" content="Addon Radar" />
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
