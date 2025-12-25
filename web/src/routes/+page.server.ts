@@ -2,13 +2,13 @@ import { getTrendingHot, getTrendingRising } from '$lib/api';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-	const [hot, rising] = await Promise.all([
-		getTrendingHot(),
-		getTrendingRising()
+	const [hotResult, risingResult] = await Promise.all([
+		getTrendingHot(1, 10),
+		getTrendingRising(1, 10)
 	]);
 
 	return {
-		hot,
-		rising
+		hot: hotResult?.data ?? [],
+		rising: risingResult?.data ?? []
 	};
 };
