@@ -22,14 +22,26 @@ async function fetchApi<T>(path: string): Promise<T | null> {
 	}
 }
 
-export async function getTrendingHot(): Promise<TrendingAddon[]> {
-	const res = await fetchApi<DataResponse<TrendingAddon[]>>('/api/v1/trending/hot');
-	return res?.data ?? [];
+export async function getTrendingHot(
+	page = 1,
+	perPage = 20
+): Promise<PaginatedResponse<TrendingAddon> | null> {
+	const params = new URLSearchParams({
+		page: String(page),
+		per_page: String(perPage)
+	});
+	return fetchApi<PaginatedResponse<TrendingAddon>>(`/api/v1/trending/hot?${params}`);
 }
 
-export async function getTrendingRising(): Promise<TrendingAddon[]> {
-	const res = await fetchApi<DataResponse<TrendingAddon[]>>('/api/v1/trending/rising');
-	return res?.data ?? [];
+export async function getTrendingRising(
+	page = 1,
+	perPage = 20
+): Promise<PaginatedResponse<TrendingAddon> | null> {
+	const params = new URLSearchParams({
+		page: String(page),
+		per_page: String(perPage)
+	});
+	return fetchApi<PaginatedResponse<TrendingAddon>>(`/api/v1/trending/rising?${params}`);
 }
 
 export async function getAddon(slug: string): Promise<Addon | null> {
