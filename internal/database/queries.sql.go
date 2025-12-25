@@ -202,10 +202,10 @@ func (q *Queries) CreateSnapshot(ctx context.Context, arg CreateSnapshotParams) 
 
 const deleteOldRankHistory = `-- name: DeleteOldRankHistory :execrows
 DELETE FROM trending_rank_history
-WHERE recorded_at < NOW() - INTERVAL '7 days'
+WHERE recorded_at < NOW() - INTERVAL '8 days'
 `
 
-// Delete rank history older than 7 days
+// Delete rank history older than 8 days (1-day buffer for 7-day lookback queries)
 func (q *Queries) DeleteOldRankHistory(ctx context.Context) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteOldRankHistory)
 	if err != nil {
@@ -580,11 +580,11 @@ func (q *Queries) GetRankAt(ctx context.Context, arg GetRankAtParams) (int16, er
 
 const getRankChanges = `-- name: GetRankChanges :many
 WITH current_ranks AS (
-    SELECT addon_id, category, rank, score
+    -- Use DISTINCT ON to get most recent rank per addon/category
+    -- (each INSERT has a slightly different microsecond timestamp)
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank, score
     FROM trending_rank_history
-    WHERE recorded_at = (
-        SELECT MAX(recorded_at) FROM trending_rank_history
-    )
+    ORDER BY addon_id, category, recorded_at DESC
 ),
 ranks_24h AS (
     SELECT DISTINCT ON (addon_id, category) addon_id, category, rank
@@ -722,13 +722,38 @@ type InsertRankHistoryParams struct {
 	Score    pgtype.Numeric `json:"score"`
 }
 
-// Record current rank for an addon in a category
+// Record current rank for an addon in a category (deprecated: use InsertRankHistoryWithTime)
 func (q *Queries) InsertRankHistory(ctx context.Context, arg InsertRankHistoryParams) error {
 	_, err := q.db.Exec(ctx, insertRankHistory,
 		arg.AddonID,
 		arg.Category,
 		arg.Rank,
 		arg.Score,
+	)
+	return err
+}
+
+const insertRankHistoryWithTime = `-- name: InsertRankHistoryWithTime :exec
+INSERT INTO trending_rank_history (addon_id, category, rank, score, recorded_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertRankHistoryWithTimeParams struct {
+	AddonID    int32              `json:"addon_id"`
+	Category   string             `json:"category"`
+	Rank       int16              `json:"rank"`
+	Score      pgtype.Numeric     `json:"score"`
+	RecordedAt pgtype.Timestamptz `json:"recorded_at"`
+}
+
+// Record current rank with explicit timestamp (use for batch consistency)
+func (q *Queries) InsertRankHistoryWithTime(ctx context.Context, arg InsertRankHistoryWithTimeParams) error {
+	_, err := q.db.Exec(ctx, insertRankHistoryWithTime,
+		arg.AddonID,
+		arg.Category,
+		arg.Rank,
+		arg.Score,
+		arg.RecordedAt,
 	)
 	return err
 }

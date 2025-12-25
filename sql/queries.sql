@@ -292,9 +292,14 @@ WHERE status = 'active'
   AND NOT EXISTS (SELECT 1 FROM synced_ids WHERE synced_ids.id = addons.id);
 
 -- name: InsertRankHistory :exec
--- Record current rank for an addon in a category
+-- Record current rank for an addon in a category (deprecated: use InsertRankHistoryWithTime)
 INSERT INTO trending_rank_history (addon_id, category, rank, score, recorded_at)
 VALUES ($1, $2, $3, $4, NOW());
+
+-- name: InsertRankHistoryWithTime :exec
+-- Record current rank with explicit timestamp (use for batch consistency)
+INSERT INTO trending_rank_history (addon_id, category, rank, score, recorded_at)
+VALUES ($1, $2, $3, $4, $5);
 
 -- name: GetRankAt :one
 -- Get the rank of an addon at a specific time (closest record before that time)
@@ -306,18 +311,18 @@ ORDER BY recorded_at DESC
 LIMIT 1;
 
 -- name: DeleteOldRankHistory :execrows
--- Delete rank history older than 7 days
+-- Delete rank history older than 8 days (1-day buffer for 7-day lookback queries)
 DELETE FROM trending_rank_history
-WHERE recorded_at < NOW() - INTERVAL '7 days';
+WHERE recorded_at < NOW() - INTERVAL '8 days';
 
 -- name: GetRankChanges :many
 -- Get rank changes for top addons (24h and 7d ago)
 WITH current_ranks AS (
-    SELECT addon_id, category, rank, score
+    -- Use DISTINCT ON to get most recent rank per addon/category
+    -- (each INSERT has a slightly different microsecond timestamp)
+    SELECT DISTINCT ON (addon_id, category) addon_id, category, rank, score
     FROM trending_rank_history
-    WHERE recorded_at = (
-        SELECT MAX(recorded_at) FROM trending_rank_history
-    )
+    ORDER BY addon_id, category, recorded_at DESC
 ),
 ranks_24h AS (
     SELECT DISTINCT ON (addon_id, category) addon_id, category, rank

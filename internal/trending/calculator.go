@@ -287,13 +287,17 @@ func (c *Calculator) upsertScore(ctx context.Context, addonID int32, hotScore, r
 }
 
 func (c *Calculator) recordRankHistory(ctx context.Context, hotAddons []database.ListHotAddonsRow, risingAddons []database.ListRisingAddonsRow) error {
+	// Use single batch timestamp for all inserts (ensures consistent snapshots)
+	batchTime := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
 	// Record hot addon ranks
 	for i, addon := range hotAddons {
-		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
-			AddonID:  addon.ID,
-			Category: "hot",
-			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
-			Score:    addon.HotScore,
+		err := c.db.InsertRankHistoryWithTime(ctx, database.InsertRankHistoryWithTimeParams{
+			AddonID:    addon.ID,
+			Category:   "hot",
+			Rank:       int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:      addon.HotScore,
+			RecordedAt: batchTime,
 		})
 		if err != nil {
 			return fmt.Errorf("insert hot rank history: %w", err)
@@ -302,11 +306,12 @@ func (c *Calculator) recordRankHistory(ctx context.Context, hotAddons []database
 
 	// Record rising addon ranks
 	for i, addon := range risingAddons {
-		err := c.db.InsertRankHistory(ctx, database.InsertRankHistoryParams{
-			AddonID:  addon.ID,
-			Category: "rising",
-			Rank:     int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
-			Score:    addon.RisingScore,
+		err := c.db.InsertRankHistoryWithTime(ctx, database.InsertRankHistoryWithTimeParams{
+			AddonID:    addon.ID,
+			Category:   "rising",
+			Rank:       int16(i + 1), //nolint:gosec // i is bounded by query limit (20)
+			Score:      addon.RisingScore,
+			RecordedAt: batchTime,
 		})
 		if err != nil {
 			return fmt.Errorf("insert rising rank history: %w", err)
