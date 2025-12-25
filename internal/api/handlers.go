@@ -236,9 +236,30 @@ func (s *Server) handleListCategories(c *gin.Context) {
 }
 
 func (s *Server) handleTrendingHot(c *gin.Context) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if err != nil || perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
 	ctx := c.Request.Context()
 
-	addons, err := s.db.ListHotAddons(ctx, 20)
+	// Get total count
+	total, err := s.db.CountHotAddons(ctx)
+	if err != nil {
+		slog.Error("failed to count hot addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	// Get paginated addons
+	addons, err := s.db.ListHotAddonsPaginated(ctx, database.ListHotAddonsPaginatedParams{
+		Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
+		Offset: int32(offset),  //nolint:gosec // offset validated via perPage <= 100
+	})
 	if err != nil {
 		slog.Error("failed to get hot addons", "error", err)
 		respondInternalError(c)
@@ -277,7 +298,7 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 				GameVersions:   a.GameVersions,
 				LastUpdatedAt:  a.LastUpdatedAt,
 			}),
-			Rank: i + 1, // 1-based rank
+			Rank: offset + i + 1, // Calculate correct rank based on page
 		}
 		if a.HotScore.Valid {
 			f8, err := a.HotScore.Float64Value()
@@ -294,8 +315,6 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 
 		// Add rank changes if available
 		if rc, ok := rankChangeMap[a.ID]; ok {
-			// Calculate rank change: old_rank - current_rank
-			// Positive = moved up, Negative = moved down
 			if rc.Rank24hAgo.Valid {
 				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
 				response[i].RankChange24h = &change
@@ -307,13 +326,34 @@ func (s *Server) handleTrendingHot(c *gin.Context) {
 		}
 	}
 
-	respondWithData(c, response)
+	respondWithPagination(c, response, page, perPage, int(total))
 }
 
 func (s *Server) handleTrendingRising(c *gin.Context) {
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if err != nil || perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
 	ctx := c.Request.Context()
 
-	addons, err := s.db.ListRisingAddons(ctx, 20)
+	// Get total count
+	total, err := s.db.CountRisingAddons(ctx)
+	if err != nil {
+		slog.Error("failed to count rising addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	// Get paginated addons
+	addons, err := s.db.ListRisingAddonsPaginated(ctx, database.ListRisingAddonsPaginatedParams{
+		Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
+		Offset: int32(offset),  //nolint:gosec // offset validated via perPage <= 100
+	})
 	if err != nil {
 		slog.Error("failed to get rising addons", "error", err)
 		respondInternalError(c)
@@ -352,7 +392,7 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 				GameVersions:   a.GameVersions,
 				LastUpdatedAt:  a.LastUpdatedAt,
 			}),
-			Rank: i + 1, // 1-based rank
+			Rank: offset + i + 1,
 		}
 		if a.RisingScore.Valid {
 			f8, err := a.RisingScore.Float64Value()
@@ -369,8 +409,6 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 
 		// Add rank changes if available
 		if rc, ok := rankChangeMap[a.ID]; ok {
-			// Calculate rank change: old_rank - current_rank
-			// Positive = moved up, Negative = moved down
 			if rc.Rank24hAgo.Valid {
 				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
 				response[i].RankChange24h = &change
@@ -382,5 +420,5 @@ func (s *Server) handleTrendingRising(c *gin.Context) {
 		}
 	}
 
-	respondWithData(c, response)
+	respondWithPagination(c, response, page, perPage, int(total))
 }
