@@ -86,6 +86,14 @@
 - [x] Weekly trend chart on addon detail pages
 - [x] API: Added download_velocity to trending responses
 
+### Frontend V3: Cards, Pagination & Naming (PR #10, Dec 2025)
+- [x] Rename categories: "Hot Right Now" → "Trending", "Rising Stars" → "Rising"
+- [x] Featured addon cards for top 3 (larger, more prominent)
+- [x] Enhanced AddonCard with rank, summary, likes, update time
+- [x] RankBadge shows all states: rising (green), falling (red), unchanged (gray), new (blue)
+- [x] API: Server-side pagination with page/per_page params and meta object
+- [x] Fix rank history bug: DISTINCT ON pattern for accurate rank changes
+
 ## Next Steps
 
 ### Priority 1: API Enhancements

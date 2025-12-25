@@ -22,24 +22,24 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 
 ## Current Status
 
-**Phase 4.5 Complete**: Frontend Redesign V2 deployed and live.
+**Phase 4.6 Complete**: Frontend V3 deployed and live.
 
 | Component | URL | Status |
 |-----------|-----|--------|
-| Frontend | https://addon-radar.com | ✅ Live (V2 Redesign) |
+| Frontend | https://addon-radar.com | ✅ Live (V3) |
 | API | https://api.addon-radar.com | ✅ Live |
 | Sync Job | Railway cron (hourly) | ✅ Running |
 | Trending Calculation | Part of sync job | ✅ Running |
 
 **Data**: 12,424 Retail addons with hourly snapshots and trending scores.
 
-**Frontend V2 Features** (PR #9, Dec 24):
-- Clean minimal light theme with dark header
-- Download velocity display (+2.3K/day) instead of arbitrary scores
-- Rank change badges (↑5, ↓3) showing position movement
-- Paginated `/trending/hot` and `/trending/rising` pages
-- Search autocomplete with dropdown results
-- Weekly trend chart on addon detail pages
+**Frontend V3 Features** (PR #10, Dec 25):
+- Renamed categories: "Trending" and "Rising" (cleaner naming)
+- Featured addon cards for top 3 (larger, more prominent)
+- Enhanced cards with rank position, summary, likes, update time
+- RankBadge shows all states: rising/falling/unchanged/new
+- Server-side pagination with meta object (page, per_page, total, total_pages)
+- Fixed rank history bug for accurate rank change tracking
 
 ## Tech Stack
 
@@ -282,6 +282,8 @@ bun run check         # Run svelte-check
 | `2025-12-22-trending-algorithm-v2-implementation.md` | **Complete** |
 | `2025-12-24-frontend-redesign.md` | **Complete** |
 | `2025-12-24-frontend-redesign-implementation.md` | **Complete** |
+| `2025-12-25-frontend-v3-design.md` | **Complete** |
+| `2025-12-25-frontend-v3-implementation.md` | **Complete** |
 
 ## Serena MCP
 
