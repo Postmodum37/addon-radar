@@ -41,6 +41,12 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 - Search autocomplete with dropdown results
 - Weekly trend chart on addon detail pages
 
+**Frontend V2.1 Features** (PR #12, Dec 25):
+- Dark mode support with theme toggle in header
+- Theme persists in localStorage, respects system preference
+- FOUC prevention via inline script
+- System theme change listener for auto-switching
+
 ## Tech Stack
 
 | Component | Choice |
@@ -282,6 +288,7 @@ bun run check         # Run svelte-check
 | `2025-12-22-trending-algorithm-v2-implementation.md` | **Complete** |
 | `2025-12-24-frontend-redesign.md` | **Complete** |
 | `2025-12-24-frontend-redesign-implementation.md` | **Complete** |
+| `2025-12-25-frontend-design-update.md` | **Complete** |
 
 ## Serena MCP
 
