@@ -4,13 +4,21 @@
 
 A website that helps World of Warcraft players discover trending and rising addons for **Retail** version. The main focus is a unique trendiness algorithm that surfaces both established hot addons and lesser-known rising stars.
 
-## Current Status: Frontend Deployed ✅
+## Current Status: Frontend Redesign V2 ✅
 
 **Live Production:**
 - **Frontend**: https://addon-radar.com
 - **API**: https://api.addon-radar.com
 - **Sync Job**: Running hourly via Railway cron
 - **Data**: 12,424 Retail addons with hourly snapshots
+
+**Frontend V2 Features (Dec 24, 2025):**
+- Clean minimal light theme with dark header
+- Download velocity display (+2.3K/day) instead of arbitrary scores
+- Rank change badges (↑5, ↓3) showing position movement
+- Paginated `/trending/hot` and `/trending/rising` pages
+- Search autocomplete with dropdown results
+- Weekly trend chart on addon detail pages
 
 ## Architecture
 
@@ -105,9 +113,18 @@ See `docs/plans/2025-12-08-trending-algorithm-design.md` for full spec.
 - [x] Railway deployment config
 - [x] Deploy to Railway
 
+### Phase 4.5: Frontend Redesign V2 (PR #9) ✅
+- [x] Clean minimal light theme with dark header
+- [x] Download velocity display instead of arbitrary scores
+- [x] Rank change badges showing position movement
+- [x] Paginated trending pages (/trending/hot, /trending/rising)
+- [x] Search autocomplete with dropdown results
+- [x] Weekly trend chart on addon detail pages
+- [x] API: Added `download_velocity` to trending responses
+
 ### Phase 5: Polish
 - [ ] Hot addon detection for faster sync
-- [ ] Historical charts
+- [x] Historical charts (trend chart on detail page)
 - [ ] SEO optimization
 
 ## Tech Stack

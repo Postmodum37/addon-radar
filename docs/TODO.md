@@ -64,23 +64,38 @@
 - [x] Add GitHub Actions lint workflow
 - [x] Update documentation (CLAUDE.md)
 
+### Frontend Development (Dec 2025)
+- [x] Choose frontend framework (SvelteKit with Bun)
+- [x] Build homepage with trending lists
+- [x] Add addon detail pages
+- [x] Add search functionality
+- [x] Deploy frontend to Railway
+
+### Trending Algorithm V2 (PR #8, Dec 2025)
+- [x] Add position tracking to trending scores
+- [x] Add rank change display (↑5, ↓3)
+- [x] Remove deprecated download/update count deltas
+- [x] Update API to include rank changes
+
+### Frontend Redesign V2 (PR #9, Dec 2025)
+- [x] Clean minimal light theme with dark header
+- [x] Download velocity display (+2.3K/day)
+- [x] Rank change badges showing position movement
+- [x] Paginated trending pages (/trending/hot, /trending/rising)
+- [x] Search autocomplete with dropdown results
+- [x] Weekly trend chart on addon detail pages
+- [x] API: Added download_velocity to trending responses
+
 ## Next Steps
 
-### Priority 1: Frontend Development
-- [ ] Choose frontend framework (Svelte, React, or HTMX)
-- [ ] Build homepage with trending lists
-- [ ] Add addon detail pages
-- [ ] Add search functionality
-- [ ] Deploy frontend
-
-### Priority 2: API Enhancements
+### Priority 1: API Enhancements
 - [ ] Add category filtering to `/addons` endpoint
 - [ ] Add sorting options (downloads, updated, name)
 - [ ] Add rate limiting (optional)
 
 ### Future Enhancements
 - [ ] Hot addon detection for faster sync
-- [ ] Historical charts on addon pages
+- [x] Historical charts on addon pages (trend chart)
 - [ ] SEO optimization
 - [ ] Database snapshot export for local dev
 
