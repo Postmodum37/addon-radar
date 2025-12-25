@@ -167,6 +167,24 @@ WHERE a.status = 'active'
 ORDER BY t.hot_score DESC
 LIMIT $1;
 
+-- name: ListHotAddonsPaginated :many
+SELECT a.*, t.hot_score, t.download_velocity
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0
+ORDER BY t.hot_score DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountHotAddons :one
+SELECT COUNT(*)
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0;
+
 -- name: ListRisingAddons :many
 SELECT a.*, t.rising_score, t.download_velocity
 FROM addons a
@@ -183,6 +201,38 @@ WHERE a.status = 'active'
   )
 ORDER BY t.rising_score DESC
 LIMIT $1;
+
+-- name: ListRisingAddonsPaginated :many
+SELECT a.*, t.rising_score, t.download_velocity
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  )
+ORDER BY t.rising_score DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountRisingAddons :one
+SELECT COUNT(*)
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  );
 
 -- name: ClearTrendingAgeForDroppedAddons :exec
 -- Reset first_hot_at for addons that dropped out of hot list
