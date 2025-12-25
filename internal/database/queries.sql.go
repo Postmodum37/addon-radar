@@ -70,11 +70,11 @@ func (q *Queries) CountAddons(ctx context.Context) (int64, error) {
 const countAddonsByCategory = `-- name: CountAddonsByCategory :one
 SELECT COUNT(*) FROM addons
 WHERE status = 'active'
-  AND $1 = ANY(categories)
+  AND $1::int = ANY(categories)
 `
 
-func (q *Queries) CountAddonsByCategory(ctx context.Context, categories []int32) (int64, error) {
-	row := q.db.QueryRow(ctx, countAddonsByCategory, categories)
+func (q *Queries) CountAddonsByCategory(ctx context.Context, dollar_1 int32) (int64, error) {
+	row := q.db.QueryRow(ctx, countAddonsByCategory, dollar_1)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -854,19 +854,19 @@ func (q *Queries) ListAddons(ctx context.Context, arg ListAddonsParams) ([]Addon
 const listAddonsByCategory = `-- name: ListAddonsByCategory :many
 SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date FROM addons a
 WHERE a.status = 'active'
-  AND $3 = ANY(a.categories)
+  AND $3::int = ANY(a.categories)
 ORDER BY a.download_count DESC
 LIMIT $1 OFFSET $2
 `
 
 type ListAddonsByCategoryParams struct {
-	Limit      int32   `json:"limit"`
-	Offset     int32   `json:"offset"`
-	Categories []int32 `json:"categories"`
+	Limit   int32 `json:"limit"`
+	Offset  int32 `json:"offset"`
+	Column3 int32 `json:"column_3"`
 }
 
 func (q *Queries) ListAddonsByCategory(ctx context.Context, arg ListAddonsByCategoryParams) ([]Addon, error) {
-	rows, err := q.db.Query(ctx, listAddonsByCategory, arg.Limit, arg.Offset, arg.Categories)
+	rows, err := q.db.Query(ctx, listAddonsByCategory, arg.Limit, arg.Offset, arg.Column3)
 	if err != nil {
 		return nil, err
 	}

@@ -144,19 +144,18 @@ func (s *Server) handleListAddons(c *gin.Context) {
 			// Invalid category - use -1 which will match nothing (lenient behavior)
 			categoryID = -1
 		}
-		categorySlice := []int32{int32(categoryID)} //nolint:gosec // validated via ParseInt
 
 		addons, err = s.db.ListAddonsByCategory(ctx, database.ListAddonsByCategoryParams{
-			Limit:      int32(perPage), //nolint:gosec // perPage validated to be <= 100
-			Offset:     int32(offset),  //nolint:gosec // offset validated via perPage <= 100
-			Categories: categorySlice,
+			Limit:   int32(perPage),    //nolint:gosec // perPage validated to be <= 100
+			Offset:  int32(offset),     //nolint:gosec // offset validated via perPage <= 100
+			Column3: int32(categoryID), //nolint:gosec // validated via ParseInt
 		})
 		if err != nil {
 			slog.Error("failed to list addons by category", "error", err)
 			respondInternalError(c)
 			return
 		}
-		total, err = s.db.CountAddonsByCategory(ctx, categorySlice)
+		total, err = s.db.CountAddonsByCategory(ctx, int32(categoryID)) //nolint:gosec // validated via ParseInt
 	} else {
 		addons, err = s.db.ListAddons(ctx, database.ListAddonsParams{
 			Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100

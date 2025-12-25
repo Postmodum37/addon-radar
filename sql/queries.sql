@@ -69,14 +69,14 @@ SELECT COUNT(*) FROM addons WHERE status = 'active';
 -- name: ListAddonsByCategory :many
 SELECT a.* FROM addons a
 WHERE a.status = 'active'
-  AND $3 = ANY(a.categories)
+  AND $3::int = ANY(a.categories)
 ORDER BY a.download_count DESC
 LIMIT $1 OFFSET $2;
 
 -- name: CountAddonsByCategory :one
 SELECT COUNT(*) FROM addons
 WHERE status = 'active'
-  AND $1 = ANY(categories);
+  AND $1::int = ANY(categories);
 
 -- name: SearchAddons :many
 SELECT * FROM addons

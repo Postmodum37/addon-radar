@@ -138,6 +138,110 @@ func TestListAddons(t *testing.T) {
 	})
 }
 
+func TestListAddonsByCategory(t *testing.T) {
+	tdb := testutil.SetupTestDB(t)
+	ctx := context.Background()
+
+	// Seed addons with different categories
+	// Category 100: addons 1-5
+	// Category 200: addons 6-10
+	// No category: addons 11-15
+	for i := 1; i <= 15; i++ {
+		var categories []int32
+		if i <= 5 {
+			categories = []int32{100}
+		} else if i <= 10 {
+			categories = []int32{200}
+		}
+
+		_, err := tdb.Pool.Exec(ctx, `
+			INSERT INTO addons (id, slug, name, status, categories, download_count)
+			VALUES ($1, $2, $3, 'active', $4, $5)
+		`, i, fmt.Sprintf("addon-%d", i), fmt.Sprintf("Addon %d", i), categories, 1000-i)
+		require.NoError(t, err)
+	}
+
+	server := NewServer(tdb.Queries)
+
+	t.Run("filter by valid category", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/api/v1/addons?category=100", nil)
+		require.NoError(t, err)
+		server.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var resp PaginatedResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, 5, resp.Meta.Total)
+	})
+
+	t.Run("filter by different category", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/api/v1/addons?category=200", nil)
+		require.NoError(t, err)
+		server.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var resp PaginatedResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, 5, resp.Meta.Total)
+	})
+
+	t.Run("invalid category returns empty results", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/api/v1/addons?category=abc", nil)
+		require.NoError(t, err)
+		server.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var resp PaginatedResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, resp.Meta.Total)
+	})
+
+	t.Run("non-existent category returns empty results", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/api/v1/addons?category=99999", nil)
+		require.NoError(t, err)
+		server.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var resp PaginatedResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, 0, resp.Meta.Total)
+	})
+
+	t.Run("pagination works with category filter", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest("GET", "/api/v1/addons?category=100&per_page=2&page=2", nil)
+		require.NoError(t, err)
+		server.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var resp PaginatedResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, resp.Meta.Page)
+		assert.Equal(t, 2, resp.Meta.PerPage)
+		assert.Equal(t, 5, resp.Meta.Total)
+		assert.Equal(t, 3, resp.Meta.TotalPages)
+	})
+}
+
 func TestListCategories(t *testing.T) {
 	tdb := testutil.SetupTestDB(t)
 	ctx := context.Background()
