@@ -27,6 +27,35 @@
 	--shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 
+[data-theme="dark"] {
+	/* Core colors */
+	--color-bg: #0F172A;
+	--color-surface: #1E293B;
+	--color-header: #0F172A;
+	--color-border: #334155;
+
+	/* Text colors */
+	--color-text: #F1F5F9;
+	--color-text-muted: #94A3B8;
+
+	/* Accent colors - brighter for dark backgrounds */
+	--color-accent: #60A5FA;
+	--color-accent-hover: #3B82F6;
+
+	/* Badge colors - adjusted for dark backgrounds */
+	--color-rising: #34D399;
+	--color-rising-bg: #064E3B;
+	--color-new: #A78BFA;
+	--color-new-bg: #4C1D95;
+	--color-hot: #F87171;
+	--color-falling: #F87171;
+	--color-falling-bg: #7F1D1D;
+
+	/* Shadows - more subtle in dark mode */
+	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+	--shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+}
+
 * {
 	box-sizing: border-box;
 	margin: 0;

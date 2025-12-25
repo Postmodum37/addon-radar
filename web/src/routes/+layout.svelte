@@ -1,6 +1,7 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
 	import SearchAutocomplete from '$lib/components/SearchAutocomplete.svelte';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -16,7 +17,10 @@
 <header>
 	<nav>
 		<a href="/" class="logo">Addon Radar</a>
-		<SearchAutocomplete />
+		<div class="header-actions">
+			<SearchAutocomplete />
+			<ThemeToggle />
+		</div>
 	</nav>
 </header>
 
@@ -52,6 +56,13 @@
 	.logo:hover {
 		text-decoration: none;
 		opacity: 0.9;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex: 1;
 	}
 
 	main {
