@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { formatDelta, formatAxisNumber, formatAxisDate, niceRound } from '$lib/utils/format';
 
 	let { data } = $props<{ data: PageData }>();
 
@@ -31,9 +32,14 @@
 		return `${major}.0+`;
 	}
 
-	// Simple sparkline data
+	// Chart data
 	const chartData = $derived(data.dailyHistory.map((d: { downloads_delta: number }) => d.downloads_delta));
 	const maxDelta = $derived(Math.max(...chartData, 1));
+	const maxDeltaNice = $derived(niceRound(maxDelta));
+	const midDeltaNice = $derived(niceRound(maxDelta / 2));
+
+	// Hover state
+	let hoveredIndex = $state<number | null>(null);
 </script>
 
 <svelte:head>
@@ -87,17 +93,57 @@
 
 {#if data.dailyHistory.length > 0}
 	<div class="chart-section">
-		<h2>Weekly Download Trend</h2>
-		<div class="chart">
-			{#each chartData as delta, i}
-				<div
-					class="bar"
-					style="height: {Math.max((delta / maxDelta) * 100, 2)}%"
-					title="{formatDate(data.dailyHistory[i].date)}: +{formatDownloads(delta)}"
-				></div>
-			{/each}
+		<h2>Download Trend</h2>
+		<div class="chart-container">
+			<!-- Y-axis scale -->
+			<div class="y-axis">
+				<span class="y-tick">{formatAxisNumber(maxDeltaNice)}</span>
+				<span class="y-tick">{formatAxisNumber(midDeltaNice)}</span>
+				<span class="y-tick">0</span>
+			</div>
+
+			<!-- Chart area -->
+			<div class="chart-wrapper">
+				<!-- Delta label on hover -->
+				{#if hoveredIndex !== null}
+					<div
+						class="delta-label"
+						style="left: calc({(hoveredIndex + 0.5) / chartData.length * 100}%)"
+					>
+						{formatDelta(chartData[hoveredIndex])}
+					</div>
+				{/if}
+
+				<!-- Bar chart -->
+				<div class="chart" role="group" aria-label="Download trend bars" onmouseleave={() => (hoveredIndex = null)}>
+					{#each chartData as delta, i}
+						<button
+							type="button"
+							class="bar"
+							class:hovered={hoveredIndex === i}
+							style="height: {Math.max((delta / maxDelta) * 100, 2)}%"
+							onmouseenter={() => (hoveredIndex = i)}
+							onmouseleave={() => (hoveredIndex = null)}
+							onfocus={() => (hoveredIndex = i)}
+							onblur={() => (hoveredIndex = null)}
+							title="{formatDate(data.dailyHistory[i].date)}: {formatDelta(delta)}"
+						></button>
+					{/each}
+				</div>
+
+				<!-- X-axis dates -->
+				<div class="x-axis">
+					{#each data.dailyHistory as item, i}
+						{#if i % 7 === 0 || i === data.dailyHistory.length - 1}
+							<span class="x-tick" style="left: calc({(i + 0.5) / data.dailyHistory.length * 100}%)">
+								{formatAxisDate(item.date)}
+							</span>
+						{/if}
+					{/each}
+				</div>
+			</div>
 		</div>
-		<p class="chart-label">Last {data.dailyHistory.length} days</p>
+		<p class="chart-footer">Last {data.dailyHistory.length} days · Daily downloads</p>
 	</div>
 {/if}
 
@@ -201,30 +247,108 @@
 		margin-bottom: 1rem;
 	}
 
+	.chart-container {
+		display: flex;
+		gap: 0.75rem;
+	}
+
+	.y-axis {
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		padding-top: 1.5rem;
+		padding-bottom: 1.5rem;
+		min-width: 45px;
+	}
+
+	.y-tick {
+		font-size: 0.6875rem;
+		color: var(--color-text-muted);
+		text-align: right;
+	}
+
+	.chart-wrapper {
+		flex: 1;
+		position: relative;
+		min-width: 0;
+	}
+
+	.delta-label {
+		position: absolute;
+		top: 0;
+		transform: translateX(-50%);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--color-accent);
+		white-space: nowrap;
+		pointer-events: none;
+		z-index: 10;
+	}
+
 	.chart {
 		display: flex;
 		align-items: flex-end;
 		gap: 2px;
-		height: 100px;
+		height: 120px;
+		margin-top: 1.5rem;
 	}
 
 	.bar {
 		flex: 1;
 		background: var(--color-accent);
+		border: none;
 		border-radius: 2px 2px 0 0;
 		min-height: 2px;
-		transition: opacity 0.2s;
+		padding: 0;
+		cursor: pointer;
+		transition: opacity 0.15s ease;
 	}
 
-	.bar:hover {
-		opacity: 0.8;
+	.bar:hover,
+	.bar.hovered {
+		opacity: 0.7;
 	}
 
-	.chart-label {
+	.bar:focus {
+		outline: none;
+	}
+
+	.x-axis {
+		position: relative;
+		height: 1.5rem;
+		margin-top: 0.5rem;
+	}
+
+	.x-tick {
+		position: absolute;
+		transform: translateX(-50%);
+		font-size: 0.6875rem;
+		color: var(--color-text-muted);
+	}
+
+	.chart-footer {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		text-align: center;
-		margin-top: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	@media (max-width: 640px) {
+		.y-axis {
+			min-width: 35px;
+		}
+
+		.y-tick {
+			font-size: 0.625rem;
+		}
+
+		.chart {
+			gap: 1px;
+		}
+
+		.x-tick {
+			font-size: 0.5625rem;
+		}
 	}
 
 	.actions {

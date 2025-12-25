@@ -55,3 +55,39 @@ export function truncateText(text: string | undefined, maxLen: number): string {
 	if (text.length <= maxLen) return text;
 	return text.slice(0, maxLen).trimEnd() + '...';
 }
+
+/**
+ * Format a number with + prefix and K/M suffix for chart delta labels.
+ */
+export function formatDelta(num: number): string {
+	if (num >= 1_000_000) return `+${(num / 1_000_000).toFixed(1)}M`;
+	if (num >= 1_000) return `+${(num / 1_000).toFixed(1)}K`;
+	return `+${num}`;
+}
+
+/**
+ * Format a number with K/M suffix for chart axis labels.
+ */
+export function formatAxisNumber(num: number): string {
+	if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+	if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+	return String(num);
+}
+
+/**
+ * Format a date string for chart axis (e.g., "Dec 1").
+ */
+export function formatAxisDate(dateStr: string): string {
+	const date = new Date(dateStr);
+	return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Round a value to a nice number for chart axis scale.
+ */
+export function niceRound(value: number): number {
+	if (value <= 0) return 0;
+	if (value < 1) return 1;
+	const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+	return Math.ceil(value / magnitude) * magnitude;
+}

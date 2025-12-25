@@ -2,6 +2,7 @@
 	import type { TrendingAddon, Addon } from '$lib/types';
 	import { formatCount, formatVelocity, formatTimeAgo, truncateText } from '$lib/utils/format';
 	import RankBadge from './RankBadge.svelte';
+	import AddonLogo from './AddonLogo.svelte';
 
 	let {
 		addon,
@@ -27,13 +28,7 @@
 		<div class="rank">#{trendingAddon.rank}</div>
 	{/if}
 
-	<div class="logo">
-		{#if addon.logo_url}
-			<img src={addon.logo_url} alt="{addon.name} logo" loading="lazy" />
-		{:else}
-			<div class="placeholder">?</div>
-		{/if}
-	</div>
+	<AddonLogo url={addon.logo_url} name={addon.name} size="sm" />
 
 	<div class="content">
 		<div class="header">
@@ -49,9 +44,7 @@
 			<p class="summary">{truncateText(addon.summary, 60)}</p>
 		{/if}
 		<p class="stats">
-			<span>{formatCount(addon.download_count)}</span>
-			<span class="separator">·</span>
-			<span>{formatCount(addon.thumbs_up_count)} likes</span>
+			<span>{formatCount(addon.download_count)} downloads</span>
 			{#if showVelocity && velocity > 0}
 				<span class="separator">·</span>
 				<span class="velocity">{formatVelocity(velocity)}/{velocityLabel}</span>
@@ -91,31 +84,6 @@
 		color: var(--color-text-muted);
 		text-align: center;
 		padding-top: 0.25rem;
-	}
-
-	.logo {
-		flex-shrink: 0;
-		width: 48px;
-		height: 48px;
-	}
-
-	.logo img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		border-radius: 8px;
-	}
-
-	.placeholder {
-		width: 100%;
-		height: 100%;
-		background: var(--color-border);
-		border-radius: 8px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 1.25rem;
-		color: var(--color-text-muted);
 	}
 
 	.content {
