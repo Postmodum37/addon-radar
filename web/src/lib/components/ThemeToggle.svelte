@@ -3,6 +3,10 @@
 
 	function getInitialTheme(): 'light' | 'dark' {
 		if (!browser) return 'light';
+		// First check what the FOUC prevention script already set on the document
+		const docTheme = document.documentElement.dataset.theme;
+		if (docTheme === 'light' || docTheme === 'dark') return docTheme;
+		// Fallback to localStorage or system preference
 		const saved = localStorage.getItem('theme');
 		if (saved === 'light' || saved === 'dark') return saved;
 		return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -10,11 +14,25 @@
 
 	let theme = $state<'light' | 'dark'>(getInitialTheme());
 
+	// Sync theme to DOM and localStorage only when it changes
 	$effect(() => {
-		if (browser) {
+		if (browser && document.documentElement.dataset.theme !== theme) {
 			document.documentElement.dataset.theme = theme;
 			localStorage.setItem('theme', theme);
 		}
+	});
+
+	// Listen for system theme changes when user has no saved preference
+	$effect(() => {
+		if (!browser) return;
+		if (localStorage.getItem('theme')) return; // User has explicit preference
+
+		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+		const handleChange = (e: MediaQueryListEvent) => {
+			theme = e.matches ? 'dark' : 'light';
+		};
+		mediaQuery.addEventListener('change', handleChange);
+		return () => mediaQuery.removeEventListener('change', handleChange);
 	});
 
 	function toggle() {
@@ -25,6 +43,8 @@
 <button
 	onclick={toggle}
 	class="theme-toggle"
+	data-testid="theme-toggle"
+	data-theme={theme}
 	aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
 >
 	{#if theme === 'light'}
@@ -61,7 +81,7 @@
 	}
 
 	.theme-toggle:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: var(--color-header-hover);
 	}
 
 	.theme-toggle:focus-visible {

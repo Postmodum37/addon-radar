@@ -3,6 +3,7 @@
 	--color-bg: #FAFAFA;
 	--color-surface: #FFFFFF;
 	--color-header: #111827;
+	--color-header-hover: rgba(255, 255, 255, 0.1);
 	--color-border: #E5E7EB;
 
 	/* Text colors */
@@ -32,6 +33,7 @@
 	--color-bg: #0F172A;
 	--color-surface: #1E293B;
 	--color-header: #0F172A;
+	--color-header-hover: rgba(255, 255, 255, 0.1);
 	--color-border: #334155;
 
 	/* Text colors */
