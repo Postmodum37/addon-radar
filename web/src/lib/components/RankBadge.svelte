@@ -1,27 +1,38 @@
 <script lang="ts">
-	let { rankChange, isNew = false }: { rankChange: number; isNew?: boolean } = $props();
+	let { rankChange, isNew = false }: { rankChange: number | null; isNew?: boolean } = $props();
 
-	const showBadge = $derived(isNew || rankChange > 0);
-	const badgeText = $derived(isNew ? 'New' : `↑${rankChange}`);
-	const badgeClass = $derived(isNew ? 'new' : 'rising');
+	const state = $derived(() => {
+		if (isNew) return 'new';
+		if (rankChange === null) return 'new';
+		if (rankChange > 0) return 'rising';
+		if (rankChange < 0) return 'falling';
+		return 'unchanged';
+	});
+
+	const badgeText = $derived(() => {
+		const s = state();
+		if (s === 'new') return 'NEW';
+		if (s === 'rising') return `+${rankChange}`;
+		if (s === 'falling') return `${rankChange}`;
+		return '=';
+	});
+
+	const showBadge = $derived(state() !== 'unchanged');
 </script>
 
 {#if showBadge}
-	<span class="badge {badgeClass}">
-		{badgeText}
+	<span class="badge {state()}">
+		{badgeText()}
 	</span>
 {/if}
 
 <style>
 	.badge {
-		position: absolute;
-		top: 8px;
-		left: 8px;
 		padding: 2px 8px;
 		border-radius: 4px;
 		font-size: 0.75rem;
 		font-weight: 600;
-		z-index: 1;
+		white-space: nowrap;
 	}
 
 	.rising {
@@ -29,8 +40,18 @@
 		color: var(--color-rising);
 	}
 
+	.falling {
+		background: var(--color-falling-bg);
+		color: var(--color-falling);
+	}
+
 	.new {
 		background: var(--color-new-bg);
 		color: var(--color-new);
+	}
+
+	.unchanged {
+		background: var(--color-unchanged-bg);
+		color: var(--color-unchanged);
 	}
 </style>
