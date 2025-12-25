@@ -3,20 +3,10 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const page = parseInt(url.searchParams.get('page') || '1', 10);
-	const perPage = 20;
-
-	const allRising = await getTrendingRising();
-	const totalPages = Math.ceil(allRising.length / perPage);
-	const start = (page - 1) * perPage;
-	const addons = allRising.slice(start, start + perPage);
+	const result = await getTrendingRising(page, 20);
 
 	return {
-		addons,
-		meta: {
-			page,
-			perPage,
-			total: allRising.length,
-			totalPages
-		}
+		addons: result?.data ?? [],
+		meta: result?.meta ?? { page: 1, per_page: 20, total: 0, total_pages: 0 }
 	};
 };
