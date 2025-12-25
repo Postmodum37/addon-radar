@@ -116,6 +116,22 @@ func (q *Queries) CountAllRecentFileUpdates(ctx context.Context) ([]CountAllRece
 	return items, nil
 }
 
+const countHotAddons = `-- name: CountHotAddons :one
+SELECT COUNT(*)
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0
+`
+
+func (q *Queries) CountHotAddons(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countHotAddons)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countOldSnapshots = `-- name: CountOldSnapshots :one
 SELECT COUNT(*) FROM snapshots
 WHERE recorded_at < NOW() - INTERVAL '95 days'
@@ -145,6 +161,29 @@ type CountRecentFileUpdatesParams struct {
 // Counts file updates in last N days (approximated by comparing latest_file_date changes in snapshots)
 func (q *Queries) CountRecentFileUpdates(ctx context.Context, arg CountRecentFileUpdatesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countRecentFileUpdates, arg.AddonID, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countRisingAddons = `-- name: CountRisingAddons :one
+SELECT COUNT(*)
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  )
+`
+
+func (q *Queries) CountRisingAddons(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countRisingAddons)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -1020,6 +1059,92 @@ func (q *Queries) ListHotAddons(ctx context.Context, limit int32) ([]ListHotAddo
 	return items, nil
 }
 
+const listHotAddonsPaginated = `-- name: ListHotAddonsPaginated :many
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.hot_score, t.download_velocity
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 500
+  AND t.hot_score > 0
+ORDER BY t.hot_score DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListHotAddonsPaginatedParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListHotAddonsPaginatedRow struct {
+	ID                int32              `json:"id"`
+	Name              string             `json:"name"`
+	Slug              string             `json:"slug"`
+	Summary           pgtype.Text        `json:"summary"`
+	AuthorName        pgtype.Text        `json:"author_name"`
+	AuthorID          pgtype.Int4        `json:"author_id"`
+	LogoUrl           pgtype.Text        `json:"logo_url"`
+	PrimaryCategoryID pgtype.Int4        `json:"primary_category_id"`
+	Categories        []int32            `json:"categories"`
+	GameVersions      []string           `json:"game_versions"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	LastUpdatedAt     pgtype.Timestamptz `json:"last_updated_at"`
+	LastSyncedAt      pgtype.Timestamptz `json:"last_synced_at"`
+	IsHot             pgtype.Bool        `json:"is_hot"`
+	HotUntil          pgtype.Timestamptz `json:"hot_until"`
+	Status            pgtype.Text        `json:"status"`
+	DownloadCount     pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount     pgtype.Int4        `json:"thumbs_up_count"`
+	PopularityRank    pgtype.Int4        `json:"popularity_rank"`
+	Rating            pgtype.Numeric     `json:"rating"`
+	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
+	HotScore          pgtype.Numeric     `json:"hot_score"`
+	DownloadVelocity  pgtype.Numeric     `json:"download_velocity"`
+}
+
+func (q *Queries) ListHotAddonsPaginated(ctx context.Context, arg ListHotAddonsPaginatedParams) ([]ListHotAddonsPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, listHotAddonsPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHotAddonsPaginatedRow{}
+	for rows.Next() {
+		var i ListHotAddonsPaginatedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+			&i.HotScore,
+			&i.DownloadVelocity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRisingAddons = `-- name: ListRisingAddons :many
 SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.rising_score, t.download_velocity
 FROM addons a
@@ -1073,6 +1198,99 @@ func (q *Queries) ListRisingAddons(ctx context.Context, limit int32) ([]ListRisi
 	items := []ListRisingAddonsRow{}
 	for rows.Next() {
 		var i ListRisingAddonsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Summary,
+			&i.AuthorName,
+			&i.AuthorID,
+			&i.LogoUrl,
+			&i.PrimaryCategoryID,
+			&i.Categories,
+			&i.GameVersions,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastSyncedAt,
+			&i.IsHot,
+			&i.HotUntil,
+			&i.Status,
+			&i.DownloadCount,
+			&i.ThumbsUpCount,
+			&i.PopularityRank,
+			&i.Rating,
+			&i.LatestFileDate,
+			&i.RisingScore,
+			&i.DownloadVelocity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRisingAddonsPaginated = `-- name: ListRisingAddonsPaginated :many
+SELECT a.id, a.name, a.slug, a.summary, a.author_name, a.author_id, a.logo_url, a.primary_category_id, a.categories, a.game_versions, a.created_at, a.last_updated_at, a.last_synced_at, a.is_hot, a.hot_until, a.status, a.download_count, a.thumbs_up_count, a.popularity_rank, a.rating, a.latest_file_date, t.rising_score, t.download_velocity
+FROM addons a
+JOIN trending_scores t ON a.id = t.addon_id
+WHERE a.status = 'active'
+  AND a.download_count >= 50
+  AND a.download_count <= 10000
+  AND t.rising_score > 0
+  AND a.id NOT IN (
+      SELECT addon_id FROM trending_scores
+      WHERE hot_score > 0
+      ORDER BY hot_score DESC
+      LIMIT 20
+  )
+ORDER BY t.rising_score DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListRisingAddonsPaginatedParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListRisingAddonsPaginatedRow struct {
+	ID                int32              `json:"id"`
+	Name              string             `json:"name"`
+	Slug              string             `json:"slug"`
+	Summary           pgtype.Text        `json:"summary"`
+	AuthorName        pgtype.Text        `json:"author_name"`
+	AuthorID          pgtype.Int4        `json:"author_id"`
+	LogoUrl           pgtype.Text        `json:"logo_url"`
+	PrimaryCategoryID pgtype.Int4        `json:"primary_category_id"`
+	Categories        []int32            `json:"categories"`
+	GameVersions      []string           `json:"game_versions"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	LastUpdatedAt     pgtype.Timestamptz `json:"last_updated_at"`
+	LastSyncedAt      pgtype.Timestamptz `json:"last_synced_at"`
+	IsHot             pgtype.Bool        `json:"is_hot"`
+	HotUntil          pgtype.Timestamptz `json:"hot_until"`
+	Status            pgtype.Text        `json:"status"`
+	DownloadCount     pgtype.Int8        `json:"download_count"`
+	ThumbsUpCount     pgtype.Int4        `json:"thumbs_up_count"`
+	PopularityRank    pgtype.Int4        `json:"popularity_rank"`
+	Rating            pgtype.Numeric     `json:"rating"`
+	LatestFileDate    pgtype.Timestamptz `json:"latest_file_date"`
+	RisingScore       pgtype.Numeric     `json:"rising_score"`
+	DownloadVelocity  pgtype.Numeric     `json:"download_velocity"`
+}
+
+func (q *Queries) ListRisingAddonsPaginated(ctx context.Context, arg ListRisingAddonsPaginatedParams) ([]ListRisingAddonsPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, listRisingAddonsPaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRisingAddonsPaginatedRow{}
+	for rows.Next() {
+		var i ListRisingAddonsPaginatedRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,

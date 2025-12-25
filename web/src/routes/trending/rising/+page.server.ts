@@ -1,22 +1,24 @@
+import { error } from '@sveltejs/kit';
 import { getTrendingRising } from '$lib/api';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
-	const page = parseInt(url.searchParams.get('page') || '1', 10);
-	const perPage = 20;
+function parsePageParam(value: string | null): number {
+	if (!value) return 1;
+	const parsed = parseInt(value, 10);
+	return isNaN(parsed) || parsed < 1 ? 1 : parsed;
+}
 
-	const allRising = await getTrendingRising();
-	const totalPages = Math.ceil(allRising.length / perPage);
-	const start = (page - 1) * perPage;
-	const addons = allRising.slice(start, start + perPage);
+export const load: PageServerLoad = async ({ url }) => {
+	const page = parsePageParam(url.searchParams.get('page'));
+	const result = await getTrendingRising(page, 20);
+
+	if (result === null) {
+		console.error('Trending rising page load failed', { page });
+		throw error(503, 'Unable to load trending data. Please try again later.');
+	}
 
 	return {
-		addons,
-		meta: {
-			page,
-			perPage,
-			total: allRising.length,
-			totalPages
-		}
+		addons: result.data,
+		meta: result.meta
 	};
 };

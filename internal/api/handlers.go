@@ -62,35 +62,64 @@ func addonToResponse(a database.Addon) AddonResponse {
 	return resp
 }
 
-func (s *Server) handleListAddons(c *gin.Context) {
+// parsePaginationParams extracts and validates page, perPage, and calculates offset.
+func parsePaginationParams(c *gin.Context) (page, perPage, offset int) {
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil {
+	if err != nil || page < 1 {
 		page = 1
 	}
-	perPage, err := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	if err != nil {
+	perPage, err = strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if err != nil || perPage < 1 || perPage > 100 {
 		perPage = 20
 	}
+	offset = (page - 1) * perPage
+	return page, perPage, offset
+}
+
+// buildRankChangeMap creates a lookup map for rank changes by addon ID for a specific category.
+func buildRankChangeMap(rankChanges []database.GetRankChangesRow, category string) map[int32]database.GetRankChangesRow {
+	m := make(map[int32]database.GetRankChangesRow)
+	for _, rc := range rankChanges {
+		if rc.Category == category {
+			m[rc.AddonID] = rc
+		}
+	}
+	return m
+}
+
+// applyRankChanges applies rank change data to a trending addon response.
+func applyRankChanges(resp *TrendingAddonResponse, rc database.GetRankChangesRow) {
+	if rc.Rank24hAgo.Valid {
+		change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
+		resp.RankChange24h = &change
+	}
+	if rc.Rank7dAgo.Valid {
+		change := int(rc.Rank7dAgo.Int16 - rc.CurrentRank)
+		resp.RankChange7d = &change
+	}
+}
+
+// numericToFloat64 converts a pgtype.Numeric to float64, returning 0 on error.
+func numericToFloat64(n pgtype.Numeric) float64 {
+	if !n.Valid {
+		return 0
+	}
+	f8, err := n.Float64Value()
+	if err != nil {
+		slog.Debug("failed to convert numeric to float64", "error", err)
+		return 0
+	}
+	return f8.Float64
+}
+
+func (s *Server) handleListAddons(c *gin.Context) {
+	page, perPage, offset := parsePaginationParams(c)
 	search := c.Query("search")
-
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 20
-	}
-
-	// Validate conversion to int32
-	if perPage > 2147483647 || page > 2147483647 {
-		perPage = 20
-		page = 1
-	}
-
-	offset := (page - 1) * perPage
 	ctx := c.Request.Context()
 
 	var addons []database.Addon
 	var total int64
+	var err error
 
 	if search != "" {
 		// Convert search string to pgtype.Text
@@ -236,151 +265,101 @@ func (s *Server) handleListCategories(c *gin.Context) {
 }
 
 func (s *Server) handleTrendingHot(c *gin.Context) {
+	page, perPage, offset := parsePaginationParams(c)
 	ctx := c.Request.Context()
 
-	addons, err := s.db.ListHotAddons(ctx, 20)
+	total, err := s.db.CountHotAddons(ctx)
+	if err != nil {
+		slog.Error("failed to count hot addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	addons, err := s.db.ListHotAddonsPaginated(ctx, database.ListHotAddonsPaginatedParams{
+		Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
+		Offset: int32(offset),  //nolint:gosec // offset validated via perPage <= 100
+	})
 	if err != nil {
 		slog.Error("failed to get hot addons", "error", err)
 		respondInternalError(c)
 		return
 	}
 
-	// Get rank changes
 	rankChanges, err := s.db.GetRankChanges(ctx)
 	if err != nil {
 		slog.Error("failed to get rank changes", "error", err)
 		respondInternalError(c)
 		return
 	}
-
-	// Build lookup map by addon_id for "hot" category
-	rankChangeMap := make(map[int32]database.GetRankChangesRow)
-	for _, rc := range rankChanges {
-		if rc.Category == "hot" {
-			rankChangeMap[rc.AddonID] = rc
-		}
-	}
+	rankChangeMap := buildRankChangeMap(rankChanges, "hot")
 
 	response := make([]TrendingAddonResponse, len(addons))
 	for i, a := range addons {
 		response[i] = TrendingAddonResponse{
 			AddonResponse: addonToResponse(database.Addon{
-				ID:             a.ID,
-				Name:           a.Name,
-				Slug:           a.Slug,
-				Summary:        a.Summary,
-				AuthorName:     a.AuthorName,
-				LogoUrl:        a.LogoUrl,
-				DownloadCount:  a.DownloadCount,
-				ThumbsUpCount:  a.ThumbsUpCount,
-				PopularityRank: a.PopularityRank,
-				GameVersions:   a.GameVersions,
-				LastUpdatedAt:  a.LastUpdatedAt,
+				ID: a.ID, Name: a.Name, Slug: a.Slug, Summary: a.Summary,
+				AuthorName: a.AuthorName, LogoUrl: a.LogoUrl, DownloadCount: a.DownloadCount,
+				ThumbsUpCount: a.ThumbsUpCount, PopularityRank: a.PopularityRank,
+				GameVersions: a.GameVersions, LastUpdatedAt: a.LastUpdatedAt,
 			}),
-			Rank: i + 1, // 1-based rank
+			Rank:             offset + i + 1,
+			Score:            numericToFloat64(a.HotScore),
+			DownloadVelocity: numericToFloat64(a.DownloadVelocity),
 		}
-		if a.HotScore.Valid {
-			f8, err := a.HotScore.Float64Value()
-			if err == nil {
-				response[i].Score = f8.Float64
-			}
-		}
-		if a.DownloadVelocity.Valid {
-			f8, err := a.DownloadVelocity.Float64Value()
-			if err == nil {
-				response[i].DownloadVelocity = f8.Float64
-			}
-		}
-
-		// Add rank changes if available
 		if rc, ok := rankChangeMap[a.ID]; ok {
-			// Calculate rank change: old_rank - current_rank
-			// Positive = moved up, Negative = moved down
-			if rc.Rank24hAgo.Valid {
-				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
-				response[i].RankChange24h = &change
-			}
-			if rc.Rank7dAgo.Valid {
-				change := int(rc.Rank7dAgo.Int16 - rc.CurrentRank)
-				response[i].RankChange7d = &change
-			}
+			applyRankChanges(&response[i], rc)
 		}
 	}
 
-	respondWithData(c, response)
+	respondWithPagination(c, response, page, perPage, int(total))
 }
 
 func (s *Server) handleTrendingRising(c *gin.Context) {
+	page, perPage, offset := parsePaginationParams(c)
 	ctx := c.Request.Context()
 
-	addons, err := s.db.ListRisingAddons(ctx, 20)
+	total, err := s.db.CountRisingAddons(ctx)
+	if err != nil {
+		slog.Error("failed to count rising addons", "error", err)
+		respondInternalError(c)
+		return
+	}
+
+	addons, err := s.db.ListRisingAddonsPaginated(ctx, database.ListRisingAddonsPaginatedParams{
+		Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
+		Offset: int32(offset),  //nolint:gosec // offset validated via perPage <= 100
+	})
 	if err != nil {
 		slog.Error("failed to get rising addons", "error", err)
 		respondInternalError(c)
 		return
 	}
 
-	// Get rank changes
 	rankChanges, err := s.db.GetRankChanges(ctx)
 	if err != nil {
 		slog.Error("failed to get rank changes", "error", err)
 		respondInternalError(c)
 		return
 	}
-
-	// Build lookup map by addon_id for "rising" category
-	rankChangeMap := make(map[int32]database.GetRankChangesRow)
-	for _, rc := range rankChanges {
-		if rc.Category == "rising" {
-			rankChangeMap[rc.AddonID] = rc
-		}
-	}
+	rankChangeMap := buildRankChangeMap(rankChanges, "rising")
 
 	response := make([]TrendingAddonResponse, len(addons))
 	for i, a := range addons {
 		response[i] = TrendingAddonResponse{
 			AddonResponse: addonToResponse(database.Addon{
-				ID:             a.ID,
-				Name:           a.Name,
-				Slug:           a.Slug,
-				Summary:        a.Summary,
-				AuthorName:     a.AuthorName,
-				LogoUrl:        a.LogoUrl,
-				DownloadCount:  a.DownloadCount,
-				ThumbsUpCount:  a.ThumbsUpCount,
-				PopularityRank: a.PopularityRank,
-				GameVersions:   a.GameVersions,
-				LastUpdatedAt:  a.LastUpdatedAt,
+				ID: a.ID, Name: a.Name, Slug: a.Slug, Summary: a.Summary,
+				AuthorName: a.AuthorName, LogoUrl: a.LogoUrl, DownloadCount: a.DownloadCount,
+				ThumbsUpCount: a.ThumbsUpCount, PopularityRank: a.PopularityRank,
+				GameVersions: a.GameVersions, LastUpdatedAt: a.LastUpdatedAt,
 			}),
-			Rank: i + 1, // 1-based rank
+			Rank:             offset + i + 1,
+			Score:            numericToFloat64(a.RisingScore),
+			DownloadVelocity: numericToFloat64(a.DownloadVelocity),
 		}
-		if a.RisingScore.Valid {
-			f8, err := a.RisingScore.Float64Value()
-			if err == nil {
-				response[i].Score = f8.Float64
-			}
-		}
-		if a.DownloadVelocity.Valid {
-			f8, err := a.DownloadVelocity.Float64Value()
-			if err == nil {
-				response[i].DownloadVelocity = f8.Float64
-			}
-		}
-
-		// Add rank changes if available
 		if rc, ok := rankChangeMap[a.ID]; ok {
-			// Calculate rank change: old_rank - current_rank
-			// Positive = moved up, Negative = moved down
-			if rc.Rank24hAgo.Valid {
-				change := int(rc.Rank24hAgo.Int16 - rc.CurrentRank)
-				response[i].RankChange24h = &change
-			}
-			if rc.Rank7dAgo.Valid {
-				change := int(rc.Rank7dAgo.Int16 - rc.CurrentRank)
-				response[i].RankChange7d = &change
-			}
+			applyRankChanges(&response[i], rc)
 		}
 	}
 
-	respondWithData(c, response)
+	respondWithPagination(c, response, page, perPage, int(total))
 }

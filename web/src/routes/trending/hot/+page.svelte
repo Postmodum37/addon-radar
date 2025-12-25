@@ -1,42 +1,64 @@
 <script lang="ts">
 	import AddonCard from '$lib/components/AddonCard.svelte';
+	import FeaturedAddonCard from '$lib/components/FeaturedAddonCard.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+
+	const isFirstPage = $derived(data.meta.page === 1);
+	const hasPrevPage = $derived(data.meta.page > 1);
+	const hasNextPage = $derived(data.meta.page < data.meta.total_pages);
+
+	// On first page, split into featured (top 3) and rest
+	const featuredAddons = $derived(isFirstPage ? data.addons.slice(0, 3) : []);
+	const regularAddons = $derived(isFirstPage ? data.addons.slice(3) : data.addons);
 </script>
 
 <svelte:head>
-	<title>Hot Right Now - Addon Radar</title>
-	<meta name="description" content="Established WoW addons with high download velocity. Updated hourly." />
+	<title>Trending Addons - Addon Radar</title>
+	<meta
+		name="description"
+		content="Discover trending World of Warcraft addons with high download velocity. Updated hourly."
+	/>
 </svelte:head>
 
 <div class="page-header">
-	<a href="/" class="back-link">← Back to home</a>
-	<h1>Hot Right Now</h1>
+	<a href="/" class="back-link">Back to home</a>
+	<h1>Trending</h1>
 	<p class="subtitle">Established addons with high download velocity</p>
 </div>
 
 {#if data.addons.length > 0}
-	<div class="addon-list">
-		{#each data.addons as addon}
-			<AddonCard {addon} showVelocity={true} velocityLabel="day" />
-		{/each}
-	</div>
+	{#if featuredAddons.length > 0}
+		<div class="featured-grid">
+			{#each featuredAddons as addon}
+				<FeaturedAddonCard {addon} velocityLabel="day" />
+			{/each}
+		</div>
+	{/if}
 
-	{#if data.meta.totalPages > 1}
+	{#if regularAddons.length > 0}
+		<div class="addon-list">
+			{#each regularAddons as addon}
+				<AddonCard {addon} showRank={true} showVelocity={true} velocityLabel="day" />
+			{/each}
+		</div>
+	{/if}
+
+	{#if data.meta.total_pages > 1}
 		<nav class="pagination">
-			{#if data.meta.page > 1}
-				<a href="/trending/hot?page={data.meta.page - 1}" class="page-link">← Previous</a>
+			{#if hasPrevPage}
+				<a href="/trending/hot?page={data.meta.page - 1}" class="page-link">Previous</a>
 			{:else}
-				<span class="page-link disabled">← Previous</span>
+				<span class="page-link disabled">Previous</span>
 			{/if}
 
-			<span class="page-info">Page {data.meta.page} of {data.meta.totalPages}</span>
+			<span class="page-info">Page {data.meta.page} of {data.meta.total_pages}</span>
 
-			{#if data.meta.page < data.meta.totalPages}
-				<a href="/trending/hot?page={data.meta.page + 1}" class="page-link">Next →</a>
+			{#if hasNextPage}
+				<a href="/trending/hot?page={data.meta.page + 1}" class="page-link">Next</a>
 			{:else}
-				<span class="page-link disabled">Next →</span>
+				<span class="page-link disabled">Next</span>
 			{/if}
 		</nav>
 	{/if}
@@ -71,6 +93,13 @@
 		color: var(--color-text-muted);
 	}
 
+	.featured-grid {
+		display: grid;
+		gap: 1rem;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		margin-bottom: 1.5rem;
+	}
+
 	.addon-list {
 		display: flex;
 		flex-direction: column;
@@ -87,13 +116,23 @@
 	}
 
 	.page-link {
+		padding: 0.5rem 1rem;
 		font-size: 0.9rem;
 		font-weight: 500;
-		color: var(--color-accent);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		color: var(--color-text);
+		transition: border-color 0.2s;
+	}
+
+	.page-link:hover:not(.disabled) {
+		border-color: var(--color-accent);
+		text-decoration: none;
 	}
 
 	.page-link.disabled {
-		color: var(--color-text-muted);
+		opacity: 0.5;
 		cursor: not-allowed;
 	}
 

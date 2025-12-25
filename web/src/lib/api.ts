@@ -14,7 +14,15 @@ const API_URL = env.API_URL || import.meta.env.VITE_API_URL || 'http://localhost
 async function fetchApi<T>(path: string): Promise<T | null> {
 	try {
 		const res = await fetch(`${API_URL}${path}`);
-		if (!res.ok) return null;
+		if (!res.ok) {
+			const body = await res.text().catch(() => '');
+			console.error(`API error: ${path}`, {
+				status: res.status,
+				statusText: res.statusText,
+				body: body.slice(0, 200)
+			});
+			return null;
+		}
 		return res.json();
 	} catch (error) {
 		console.error(`API fetch failed: ${path}`, error);
@@ -22,14 +30,26 @@ async function fetchApi<T>(path: string): Promise<T | null> {
 	}
 }
 
-export async function getTrendingHot(): Promise<TrendingAddon[]> {
-	const res = await fetchApi<DataResponse<TrendingAddon[]>>('/api/v1/trending/hot');
-	return res?.data ?? [];
+export async function getTrendingHot(
+	page = 1,
+	perPage = 20
+): Promise<PaginatedResponse<TrendingAddon> | null> {
+	const params = new URLSearchParams({
+		page: String(page),
+		per_page: String(perPage)
+	});
+	return fetchApi<PaginatedResponse<TrendingAddon>>(`/api/v1/trending/hot?${params}`);
 }
 
-export async function getTrendingRising(): Promise<TrendingAddon[]> {
-	const res = await fetchApi<DataResponse<TrendingAddon[]>>('/api/v1/trending/rising');
-	return res?.data ?? [];
+export async function getTrendingRising(
+	page = 1,
+	perPage = 20
+): Promise<PaginatedResponse<TrendingAddon> | null> {
+	const params = new URLSearchParams({
+		page: String(page),
+		per_page: String(perPage)
+	});
+	return fetchApi<PaginatedResponse<TrendingAddon>>(`/api/v1/trending/rising?${params}`);
 }
 
 export async function getAddon(slug: string): Promise<Addon | null> {
