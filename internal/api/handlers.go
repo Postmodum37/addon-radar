@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -60,6 +61,15 @@ func addonToResponse(a database.Addon) AddonResponse {
 	}
 
 	return resp
+}
+
+// escapeLikePattern escapes LIKE wildcards (% and _) to prevent pattern-based DoS.
+// PostgreSQL uses backslash as the default escape character.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\") // Escape backslashes first
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }
 
 // parsePaginationParams extracts and validates page, perPage, and calculates offset.
@@ -122,9 +132,12 @@ func (s *Server) handleListAddons(c *gin.Context) {
 	var total int64
 	var err error
 
+	// Note: search takes precedence over category filter.
+	// If both are provided, category is ignored.
 	if search != "" {
-		// Convert search string to pgtype.Text
-		searchText := pgtype.Text{String: search, Valid: true}
+		// Escape LIKE wildcards to prevent pattern-based DoS
+		escapedSearch := escapeLikePattern(search)
+		searchText := pgtype.Text{String: escapedSearch, Valid: true}
 
 		addons, err = s.db.SearchAddons(ctx, database.SearchAddonsParams{
 			Limit:   int32(perPage), //nolint:gosec // perPage validated to be <= 100

@@ -1,4 +1,2 @@
 User-agent: *
 Allow: /
-
-Sitemap: https://addon-radar.com/sitemap.xml

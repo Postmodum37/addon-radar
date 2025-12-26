@@ -642,6 +642,30 @@ func TestNumericToFloat64(t *testing.T) {
 	}
 }
 
+func TestEscapeLikePattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"no special chars", "hello world", "hello world"},
+		{"percent sign", "100% complete", "100\\% complete"},
+		{"underscore", "test_addon", "test\\_addon"},
+		{"multiple wildcards", "50%_test", "50\\%\\_test"},
+		{"backslash", "path\\to\\file", "path\\\\to\\\\file"},
+		{"all special chars", "50%\\test_", "50\\%\\\\test\\_"},
+		{"empty string", "", ""},
+		{"only wildcards", "%_", "\\%\\_"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := escapeLikePattern(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestTrendingHotPagination(t *testing.T) {
 	tdb := testutil.SetupTestDB(t)
 	ctx := context.Background()
