@@ -6,8 +6,6 @@
 - Follow TDD principles when writing code. Write tests before implementation. Don't overdo testing, but ensure critical paths are well-covered. Focus on high-value tests, not 100% coverage. Prefer integration tests for key flows, unit tests for complex logic.
 - Keep markdown files up-to-date after significant changes:
   - `CLAUDE.md` - Project overview (this file)
-  - `/docs/PLAN.md` - Project roadmap and status
-  - `/docs/TODO.md` - Task tracking
   - `/docs/ALGORITHM.md` - Trending algorithm details
   - `/docs/plans/*` - Design documents, feature specs and plans
   - `/docs/solutions/*` - Compounded knowledge from solved problems
@@ -89,6 +87,12 @@ Addon Radar is a website displaying trending World of Warcraft addons for **Reta
 - FOUC prevention via inline script
 - System theme change listener for auto-switching
 
+**Basic Polish** (PR #13, Dec 26):
+- SEO: robots.txt, canonical URLs, og:url, og:site_name meta tags
+- API: Category filtering with `?category=ID` parameter
+- Security: LIKE pattern escaping to prevent pattern-based DoS
+- Performance: GIN index on categories column
+
 ## Tech Stack
 
 | Component | Choice |
@@ -139,7 +143,7 @@ addon-radar/
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/v1/health` | Health check |
-| `GET /api/v1/addons` | List (paginated, searchable) |
+| `GET /api/v1/addons` | List (paginated, searchable, category filter) |
 | `GET /api/v1/addons/:slug` | Single addon |
 | `GET /api/v1/addons/:slug/history` | Download history |
 | `GET /api/v1/categories` | All categories |
