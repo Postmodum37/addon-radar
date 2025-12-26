@@ -28,6 +28,7 @@ CREATE TABLE addons (
 CREATE INDEX idx_addons_slug ON addons(slug);
 CREATE INDEX idx_addons_is_hot ON addons(is_hot) WHERE is_hot = TRUE;
 CREATE INDEX idx_addons_status ON addons(status);
+CREATE INDEX idx_addons_categories ON addons USING GIN (categories);
 
 -- Snapshots table: time-series metrics
 CREATE TABLE snapshots (

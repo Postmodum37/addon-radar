@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -62,6 +63,15 @@ func addonToResponse(a database.Addon) AddonResponse {
 	return resp
 }
 
+// escapeLikePattern escapes LIKE wildcards (% and _) to prevent pattern-based DoS.
+// PostgreSQL uses backslash as the default escape character.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\") // Escape backslashes first
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
+
 // parsePaginationParams extracts and validates page, perPage, and calculates offset.
 func parsePaginationParams(c *gin.Context) (page, perPage, offset int) {
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -115,15 +125,19 @@ func numericToFloat64(n pgtype.Numeric) float64 {
 func (s *Server) handleListAddons(c *gin.Context) {
 	page, perPage, offset := parsePaginationParams(c)
 	search := c.Query("search")
+	categoryStr := c.Query("category")
 	ctx := c.Request.Context()
 
 	var addons []database.Addon
 	var total int64
 	var err error
 
+	// Note: search takes precedence over category filter.
+	// If both are provided, category is ignored.
 	if search != "" {
-		// Convert search string to pgtype.Text
-		searchText := pgtype.Text{String: search, Valid: true}
+		// Escape LIKE wildcards to prevent pattern-based DoS
+		escapedSearch := escapeLikePattern(search)
+		searchText := pgtype.Text{String: escapedSearch, Valid: true}
 
 		addons, err = s.db.SearchAddons(ctx, database.SearchAddonsParams{
 			Limit:   int32(perPage), //nolint:gosec // perPage validated to be <= 100
@@ -136,6 +150,25 @@ func (s *Server) handleListAddons(c *gin.Context) {
 			return
 		}
 		total, err = s.db.CountSearchAddons(ctx, searchText)
+	} else if categoryStr != "" {
+		// Filter by category
+		categoryID, parseErr := strconv.ParseInt(categoryStr, 10, 32)
+		if parseErr != nil {
+			// Invalid category - use -1 which will match nothing (lenient behavior)
+			categoryID = -1
+		}
+
+		addons, err = s.db.ListAddonsByCategory(ctx, database.ListAddonsByCategoryParams{
+			Limit:   int32(perPage),    //nolint:gosec // perPage validated to be <= 100
+			Offset:  int32(offset),     //nolint:gosec // offset validated via perPage <= 100
+			Column3: int32(categoryID), //nolint:gosec // validated via ParseInt
+		})
+		if err != nil {
+			slog.Error("failed to list addons by category", "error", err)
+			respondInternalError(c)
+			return
+		}
+		total, err = s.db.CountAddonsByCategory(ctx, int32(categoryID)) //nolint:gosec // validated via ParseInt
 	} else {
 		addons, err = s.db.ListAddons(ctx, database.ListAddonsParams{
 			Limit:  int32(perPage), //nolint:gosec // perPage validated to be <= 100
